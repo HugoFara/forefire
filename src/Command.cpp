@@ -20,52 +20,41 @@ using namespace std;
 namespace libforefire
 {
 
-    size_t Command::currentLevel = 0;
-
-    bool Command::init = true;
-    bool Command::currentFrontCompleted = false;
-
-    double Command::startTime = 0;
-    double Command::endTime = 0;
-
-    bool Command::firstCommand = true;
-    size_t Command::refTabs = 0;
-
-    FFPoint *Command::lastReadLoc = 0;
-    FireNode *Command::previousNode = 0;
-    FireNode *Command::leftLinkNode = 0;
-    FireNode *Command::rightLinkNode = 0;
-
-    double Command::bmapOutputUpdate = 0;
-    int Command::numBmapOutputs = 0;
-    double Command::refTime = 0;
-    int Command::numAtmoIterations = 0;
-
     const string Command::stringError = "1234567890";
     const FFPoint Command::pointError = FFPoint(1234567890., 1234567890., 0);
     const FFVector Command::vectorError = FFVector(1234567890., 1234567890.);
 
-    vector<string> Command::outputDirs;
-
-    Command::Session Command::currentSession =
-        {
-            SimulationParameters::GetInstance(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            &cout,
-            0,
-            0,
-    };
-
     const Command::commandMap Command::translator = Command::makeCmds();
 
-    // Defaults constructor and destructor for the 'Command' abstract class
+    // Everything below used to be a static member, which meant one shared
+    // simulation for the whole process: constructing a second Command silently
+    // took over the first one's domain. It is per-instance now, so each
+    // Command owns its own session, and the values that were static
+    // initialisers become constructor initialisers.
     Command::Command()
+        : currentLevel(0),
+          parallel(false),
+          init(true),
+          currentFrontCompleted(false),
+          startTime(0),
+          endTime(0),
+          firstCommand(true),
+          refTabs(0),
+          lastReadLoc(0),
+          previousNode(0),
+          leftLinkNode(0),
+          rightLinkNode(0),
+          bmapOutputUpdate(0),
+          numBmapOutputs(0),
+          numAtmoIterations(0),
+          refTime(0),
+          currentSession{
+              SimulationParameters::GetInstance(),
+              0, 0, 0, 0, 0, 0, 0,
+              &cout,
+              0,
+              0,
+          }
     {
     }
 
@@ -3312,7 +3301,7 @@ namespace libforefire
 
                 if ((whenCommand)[0] == '@' && whenDouble != FLOATERROR)
                 {
-                    currentSession.tt->insert(new FFEvent(new EventCommand(atCommand, whenDouble)));
+                    currentSession.tt->insert(new FFEvent(new EventCommand(atCommand, whenDouble, this)));
                 }
                 else
                 {
@@ -3333,7 +3322,7 @@ namespace libforefire
                     {
                         // calling the right function
                           //            cout << "executing command '" << scmd << "' with argument(s) '" << command[1] << "'" << endl;
-                        (curcmd->second)(command[1], numTabs);
+                        (this->*(curcmd->second))(command[1], numTabs);
                     }
                     catch (BadOption &)
                     {
@@ -3422,7 +3411,10 @@ namespace libforefire
             currentSession.server = new http_command::HttpCommandServer();
         }
 
-        currentSession.server->setCallback(executeCommandAndCaptureOutput);
+        // Bound to this Command so the served commands act on this session,
+        // rather than on whatever the process-wide interpreter happened to be.
+        currentSession.server->setCallback(
+            [this](const std::string &c) { return executeCommandAndCaptureOutput(c); });
 
         if (!currentSession.server->listenOn(address))
         {

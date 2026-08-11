@@ -6,11 +6,6 @@ using namespace std;
 using namespace libforefire;
 #include <iostream>
 
-Command* pyxecutor;
-Command::Session* session;
-SimulationParameters* params;
-
-
 PLibForeFire::PLibForeFire() {
 	pyxecutor = new Command();
 	session = &(pyxecutor->currentSession);
@@ -377,7 +372,7 @@ PYBIND11_MODULE(_pyforefire, m) {
                 }
             } else {
                 // Parameter is not set: check for a data matrix with the given key.
-                std::vector<std::vector<double>> matrix = pyxecutor->getDomain()->getDataMatrix(const_cast<char*>(key.c_str()));
+                std::vector<std::vector<double>> matrix = self.pyxecutor->getDomain()->getDataMatrix(const_cast<char*>(key.c_str()));
                 // If the returned matrix is the sentinel (1x1 with -9999), consider it non-existent.
                 if (matrix.size() == 1 && matrix[0].size() == 1 && matrix[0][0] == -9999) {
                     throw std::runtime_error("Parameter '" + key + "' does not exist.");

@@ -26,8 +26,17 @@ using namespace std;
 
 class PLibForeFire {
 
-
 public:
+// These were file-scope globals, so every new PLibForeFire overwrote them and
+// the previous object silently started driving the newest simulation. That was
+// invisible while Command::currentSession was static, because all instances
+// shared one session anyway. As members, each ForeFire object owns its own
+// interpreter and its own simulation. Public because the pybind11 accessor
+// lambdas reach them through the instance.
+libforefire::Command* pyxecutor;
+libforefire::Command::Session* session;
+libforefire::SimulationParameters* params;
+
 PLibForeFire();
 std::string execute(char *);
 void createDomain( int id

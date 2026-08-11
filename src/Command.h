@@ -67,37 +67,40 @@ class Command {
 	Command(const Command&); // Disallowed
 
 
-	static size_t currentLevel; /*!< current level of the command */
+	size_t currentLevel; /*!< current level of the command */
 
-	// Definition of the command map alias
-	typedef int (*cmd)(const string&, size_t&);
+	// Definition of the command map alias.
+	// A pointer-to-member rather than a plain function pointer: the handlers
+	// act on one Command's session, so each has to be called on an instance.
+	// The table itself stays static, being immutable and shared safely.
+	typedef int (Command::*cmd)(const string&, size_t&);
 	typedef map<string,cmd> commandMap;  /*!< map of aliases between strings and functions to be called */
 	static const int numberCommands = 22; /*!< number of possible commands */
 	static commandMap makeCmds(){
 		// Construction of the command translator
 		commandMap trans;
-		trans["FireDomain"] = &createDomain;
-		trans["FireNode"] = &addFireNode;
-		trans["FireFront"] = &createFireFront;
-		trans["startFire"] = &startFire;
-		trans["step"] = &stepSimulation;
-		trans["goTo"] = &goTo;
-		trans["print"] = &printSimulation;
-		trans["save"] = &saveSimulation;
-		trans["plot"] = &plotSimulation;
-		trans["computeSpeed"] = &computeModelSpeed;
-		trans["addLayer"] = &addLayer;
-		trans["setParameter"] = &setParameter;
-		trans["setParameters"] = &setParameters;
-		trans["getParameter"] = &getParameter;
-		trans["trigger"] = &triggerValue;
-		trans["include"] = &include;
-		trans["loadData"] = &loadData;
-		trans["systemExec"] = &systemExec;
-		trans["listenHTTP"] = &listenHTTP;
-		trans["clear"] = &clear;
-		trans["quit"] = &quit;
-		trans["emit"] = &emit;
+		trans["FireDomain"] = &Command::createDomain;
+		trans["FireNode"] = &Command::addFireNode;
+		trans["FireFront"] = &Command::createFireFront;
+		trans["startFire"] = &Command::startFire;
+		trans["step"] = &Command::stepSimulation;
+		trans["goTo"] = &Command::goTo;
+		trans["print"] = &Command::printSimulation;
+		trans["save"] = &Command::saveSimulation;
+		trans["plot"] = &Command::plotSimulation;
+		trans["computeSpeed"] = &Command::computeModelSpeed;
+		trans["addLayer"] = &Command::addLayer;
+		trans["setParameter"] = &Command::setParameter;
+		trans["setParameters"] = &Command::setParameters;
+		trans["getParameter"] = &Command::getParameter;
+		trans["trigger"] = &Command::triggerValue;
+		trans["include"] = &Command::include;
+		trans["loadData"] = &Command::loadData;
+		trans["systemExec"] = &Command::systemExec;
+		trans["listenHTTP"] = &Command::listenHTTP;
+		trans["clear"] = &Command::clear;
+		trans["quit"] = &Command::quit;
+		trans["emit"] = &Command::emit;
 
 		return trans;
 	}
@@ -106,84 +109,84 @@ class Command {
 
 
 	// Boolean for parallel simulation
-	static bool parallel;
+	bool parallel;
 
 	// Boolean for initialization
-	static bool init;
-	static bool currentFrontCompleted;
+	bool init;
+	bool currentFrontCompleted;
 
 	// Time interval of a step of the simulation
-	static double startTime;
-	static double endTime;
+	double startTime;
+	double endTime;
 
 	enum Status {
 		normal = 0,	error = 1
 	};
 
-	static bool firstCommand;
-	static size_t refTabs;
+	bool firstCommand;
+	size_t refTabs;
 
-	static FFPoint* lastReadLoc;
-	static FireNode* previousNode;
-	static FireNode* leftLinkNode;
-	static FireNode* rightLinkNode;
+	FFPoint* lastReadLoc;
+	FireNode* previousNode;
+	FireNode* leftLinkNode;
+	FireNode* rightLinkNode;
 
-	static double bmapOutputUpdate;
-	static int numBmapOutputs;
-	static int numAtmoIterations;
+	double bmapOutputUpdate;
+	int numBmapOutputs;
+	int numAtmoIterations;
 
 	/*! \brief command to create the desired fire domain */
-	static int createDomain(const string&, size_t&);
+	int createDomain(const string&, size_t&);
 	/*! \brief command to create a firenode */
-	static int addFireNode(const string&, size_t&);
+	int addFireNode(const string&, size_t&);
 	/*! \brief command to create a firefront from a location point*/
-	static int startFire(const string&, size_t&);
+	int startFire(const string&, size_t&);
 	/*! \brief command to create a firefront */
-	static int createFireFront(const string&, size_t&);
+	int createFireFront(const string&, size_t&);
 	/*! \brief command to run the simulation for the desired amount of time */
-	static int stepSimulation(const string&, size_t&);
+	int stepSimulation(const string&, size_t&);
 	/*! \brief command to run the simulation till the desired time */
-	static int goTo(const string&, size_t&);
+	int goTo(const string&, size_t&);
 	/*! \brief command to save in print format the simulation */
-	static int printSimulation(const string&, size_t&);
+	int printSimulation(const string&, size_t&);
 	/*! \brief command to save in print format the simulation */
-	static int saveSimulation(const string&, size_t&);
+	int saveSimulation(const string&, size_t&);
 	/*! \brief command to load in print format the simulation */
-	static int addLayer(const string&, size_t&);
+	int addLayer(const string&, size_t&);
 	/*! \brief command to plot in png/jpg format the simulation */
-	static int plotSimulation(const string&, size_t&);
+	int plotSimulation(const string&, size_t&);
 	/*! \brief command to get speed and cout a double */
-	static int computeModelSpeed(const string&, size_t&);
+	int computeModelSpeed(const string&, size_t&);
 	/*! \brief command to set a given parameter */
-	static int setParameter(const string&, size_t&);
+	int setParameter(const string&, size_t&);
 	/*! \brief command to set a given list of parameters */
-	static int setParameters(const string&, size_t&);
+	int setParameters(const string&, size_t&);
 	/*! \brief command to get a given parameters */
-	static int getParameter(const string&, size_t&);
+	int getParameter(const string&, size_t&);
 	/*! \brief command to include a file */
-	static int triggerValue(const string&, size_t&);
+	int triggerValue(const string&, size_t&);
 	/*! \brief command to trigger values that will modifie runtime model parameterisation */
-	static int include(const string&, size_t&);
+	int include(const string&, size_t&);
 
 
 	/*! \brief command to load a NC data file */
-	static int loadData(const string&, size_t&);
+	int loadData(const string&, size_t&);
 	/*! \brief command to save a NC landscape data file */
-	static int saveData(const string&, size_t&);
+	int saveData(const string&, size_t&);
 
 
 	/*! \brief command to clear the simulation */
-	static int systemExec(const string&, size_t&);
+	int systemExec(const string&, size_t&);
 	/*! \brief command to run a system trough pipe */
-	static int clear(const string&, size_t&);
+	int clear(const string&, size_t&);
 	/*! \brief command to quit the ForeFire shell */
-	static int quit(const string&, size_t&);
+	int quit(const string&, size_t&);
     /*! \brief command to quit the ForeFire shell */
-    static int listenHTTP(const string&, size_t &) ;
+    int listenHTTP(const string&, size_t &) ;
 	/*! \brief command to emit a flux over a given area for a time span */
-	static int emit(const string&, size_t&);
+	int emit(const string&, size_t&);
 
-	static string executeCommandAndCaptureOutput(const std::string &cmd);
+	string executeCommandAndCaptureOutput(const std::string &cmd);
     
 	/*! \brief splits the command into the desired options */
 	static void tokenize(const string&, vector<string>&, const string&);
@@ -194,20 +197,20 @@ class Command {
 	/*! \brief reads the value of the desired double */
 	static double getFloat(string, string);
 	/*! \brief reads the value of the desired FFPoint */
-	static FFPoint getPoint(string, string);
+	FFPoint getPoint(string, string);
 	/*! \brief reads the value of the desired FFVector */
 	
-	static std::vector<FFPoint> getPoly(const std::string &, const std::string &);
+	std::vector<FFPoint> getPoly(const std::string &, const std::string &);
 
 	static FFVector getVector(string, string);
 	/*! \brief counts the arguments in the commands */
 	static size_t argCount(string);
 	/*! \brief counting the tabs in the commands */
-	static size_t tabsCount(string);
+	size_t tabsCount(string);
 	/*! \brief remove the tabs in the commands */
 	static string removeTabs(string);
 
-    static void writeImage(const char* filename, const std::vector<std::vector<double>>& matrix,
+    void writeImage(const char* filename, const std::vector<std::vector<double>>& matrix,
                            double forced_min_val = std::numeric_limits<double>::quiet_NaN(),
                            double forced_max_val = std::numeric_limits<double>::quiet_NaN(),
                            const std::string& colormap = "grayscale"); // Default to grayscale if no colormap is specified.
@@ -233,7 +236,7 @@ class Command {
 public:
 
 	// Reference time
-	static double refTime;
+	double refTime;
 
 	// Definition of the structure 'Session'
 	struct Session{
@@ -251,12 +254,12 @@ public:
 	};
 
 	// Definition of the current session, on which the commands acts
-	static Session currentSession; /*!< session containing all the data of the ForeFire simulation */
+	Session currentSession; /*!< session containing all the data of the ForeFire simulation */
 	//static FireDomain* domain; /*!< pointer to the current fire domain */ 
 	//static void setDomain(FireDomain*); /*!< pointer to the current fire domain */
 
 	// Vector of outputs directories
-	static vector<string> outputDirs; /*!< vector of outputs directories */
+	vector<string> outputDirs; /*!< vector of outputs directories */
 
 	/*! \brief Default constructor */
 	Command();
@@ -267,32 +270,32 @@ public:
 	virtual ~Command();
 
 	/*! \brief setting the reference time */
-	static void setReferenceTime(const double&);
+	void setReferenceTime(const double&);
 
 	/*! \brief setting the start time of the step of simulation */
-	static void setStartTime(const double&);
+	void setStartTime(const double&);
 
 	/*! \brief getting the current time of simulation */
-	static double getTime();
+	double getTime();
 
 	/*! \brief managing the level */
-	static void increaseLevel();
-	static void decreaseLevel();
+	void increaseLevel();
+	void decreaseLevel();
 
 	/*! \brief accessor to the domain */
-	static FireDomain* getDomain();
+	FireDomain* getDomain();
 	/*! \brief command to redirect the ostringstream */
-	static void setOstringstream(ostringstream*);
+	void setOstringstream(ostringstream*);
 
 	/*! \brief execute the desired command */
-	static void ExecuteCommand(string&);
-	static void executeLoop(ifstream* inputStream);
+	void ExecuteCommand(string&);
+	void executeLoop(ifstream* inputStream);
 
 	/*! \brief complete the last front */
-	static void completeFront(FireFront*);
+	void completeFront(FireFront*);
 
 	/*! \brief backup of the simulation */
-	static string dumpString();
+	string dumpString();
 
 
 };

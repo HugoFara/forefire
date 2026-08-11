@@ -17,7 +17,7 @@ namespace libforefire{
 
 
 
-EventCommand::EventCommand(string scommand, double schedueledTime) : ForeFireAtom(schedueledTime) {
+EventCommand::EventCommand(string scommand, double schedueledTime, Command* exec) : ForeFireAtom(schedueledTime), executor(exec) {
 	schedueledCommand = scommand;
 
 };
@@ -29,7 +29,7 @@ EventCommand::~EventCommand() {};
 
 
 void EventCommand::update(){
-	Command::ExecuteCommand(schedueledCommand);
+	if ( executor != 0 ) executor->ExecuteCommand(schedueledCommand);
 }
 void EventCommand::timeAdvance(){
 	setUpdateTime(numeric_limits<double>::infinity());

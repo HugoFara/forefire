@@ -9,13 +9,16 @@
 #ifndef EVENTCOMMAND_H_
 #define EVENTCOMMAND_H_
 
-#include "Command.h"
 #include "include/Futils.h"
 #include "ForeFireAtom.h"
 
 using namespace std;
 
 namespace libforefire{
+
+// Forward declared rather than included: Command.h includes this header, so
+// including it back would be circular. Only a pointer is needed here.
+class Command;
 
 /*! \class EventCommand
  * \brief TODO
@@ -25,12 +28,19 @@ namespace libforefire{
 class EventCommand: public ForeFireAtom {
 
 	string schedueledCommand;
+	/*! \brief interpreter this event runs its command on.
+	 *
+	 * The command used to go to a process-wide Command, which meant an event
+	 * scheduled by one simulation would run against whichever simulation
+	 * happened to exist later. It now belongs to the Command that scheduled it.
+	 */
+	Command* executor;
 
 public:
 	/*! \brief Default constructor */
-	EventCommand() : ForeFireAtom(0.) {};
+	EventCommand() : ForeFireAtom(0.), executor(0) {};
 	/*! \brief standard constructor */
-	EventCommand( string, double ) ;
+	EventCommand( string, double, Command* ) ;
 	/*! \brief Default destructor */
 	~EventCommand();
 
