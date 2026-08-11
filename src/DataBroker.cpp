@@ -18,24 +18,14 @@ namespace libforefire
 	const DataBroker::fluxGetterMap DataBroker::fluxPropertiesGetters =
 		DataBroker::makeFGmap();
 
-	DataLayer<double> *DataBroker::fuelLayer = 0;
-	DataLayer<double> *DataBroker::moistureLayer = 0;
-	DataLayer<double> *DataBroker::temperatureLayer = 0;
-	DataLayer<double> *DataBroker::dummyLayer = 0;
-	DataLayer<double> *DataBroker::altitudeLayer = 0;
-	DataLayer<double> *DataBroker::forcedArrivalTimeLayer = 0;
-	DataLayer<double> *DataBroker::slopeLayer = 0;
-	DataLayer<double> *DataBroker::windULayer = 0;
-	DataLayer<double> *DataBroker::windVLayer = 0;
+	/* The predefined layer pointers, the parameters and the front scan distance
+	 * used to be defined here as statics. They are per-broker now, so two
+	 * simulations no longer share one set of layers. Only the two getter maps
+	 * above stay process-wide: they hold plain function pointers and are read
+	 * only after construction. */
 
-	XYZTDataLayer<double> *DataBroker::PwindULayer = 0;
-	XYZTDataLayer<double> *DataBroker::PwindVLayer = 0;
-	FluxLayer<double> *DataBroker::heatFluxLayer = 0;
-
-	SimulationParameters *DataBroker::params = SimulationParameters::GetInstance();
-	double frontScanDistance = 1000;
-
-	DataBroker::DataBroker(FireDomain *fd) : domain(fd)
+	DataBroker::DataBroker(FireDomain *fd)
+		: domain(fd), params(SimulationParameters::GetInstance())
 	{
 		commonInitialization();
 	}
@@ -464,7 +454,7 @@ namespace libforefire
 	*/
 	void DataBroker::loadMultiWindBin(double refTime, size_t numberOfDomains, size_t *startI, size_t *startJ)
 	{
-		string windFileName(params->getParameter("caseDirectory") + '/' + params->getParameter("PPath") + '/' + to_string(FireDomain::atmoIterNumber % 2) + "/");
+		string windFileName(params->getParameter("caseDirectory") + '/' + params->getParameter("PPath") + '/' + to_string(domain->atmoIterNumber % 2) + "/");
 
 		if (windULayer != 0)
 		{
@@ -533,7 +523,7 @@ namespace libforefire
 				else if (neededProperties.back().find("epth") != string::npos)
 				{
 					int fdepth = 1;
-					FireNode::setFrontDepthComputation(fdepth);
+					domain->setFrontDepthComputation(fdepth);
 					/* checking that a heat flux layer is present for burn checks.
 					 * If not, instantiating a HeatFluxBasicModel */
 					if (heatFluxLayer == 0 and !domain->addFluxLayer("heatFlux"))
@@ -547,7 +537,7 @@ namespace libforefire
 				else if (neededProperties.back().find("urvature") != string::npos)
 				{
 					int curv = 1;
-					FireNode::setCurvatureComputation(curv);
+					domain->setCurvatureComputation(curv);
 				}
 				else
 				{
@@ -775,7 +765,7 @@ namespace libforefire
 
 	int DataBroker::getDummy(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = dummyLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->dummyLayer->getValueAt(fn);
 		return 1;
 	}
 
@@ -783,7 +773,7 @@ namespace libforefire
 									  int start)
 	{
 	
-		int numberOfValuesFilled = fuelLayer->getValuesAt(fn, model, start);
+		int numberOfValuesFilled = model->dataBroker->fuelLayer->getValuesAt(fn, model, start);
 		return numberOfValuesFilled;
 	}
 
@@ -795,20 +785,20 @@ namespace libforefire
 		double m_livew = 1;
 		double m_hundreds = 0.06;
 		
-		if (params->isValued("moistures.ones"))
-			m_ones = params->getDouble("moistures.ones");
+		if (model->dataBroker->params->isValued("moistures.ones"))
+			m_ones = model->dataBroker->params->getDouble("moistures.ones");
 	
-		if (params->isValued("moistures.liveh"))
-			m_liveh = params->getDouble("moistures.liveh");
+		if (model->dataBroker->params->isValued("moistures.liveh"))
+			m_liveh = model->dataBroker->params->getDouble("moistures.liveh");
 		
-		if (params->isValued("moistures.tens"))
-			m_tens = params->getDouble("moistures.tens");
+		if (model->dataBroker->params->isValued("moistures.tens"))
+			m_tens = model->dataBroker->params->getDouble("moistures.tens");
 		
-		if (params->isValued("moistures.livew"))
-			m_livew = params->getDouble("moistures.livew");
+		if (model->dataBroker->params->isValued("moistures.livew"))
+			m_livew = model->dataBroker->params->getDouble("moistures.livew");
 		
-		if (params->isValued("moistures.hundreds"))
-			m_hundreds = params->getDouble("moistures.hundreds");
+		if (model->dataBroker->params->isValued("moistures.hundreds"))
+			m_hundreds = model->dataBroker->params->getDouble("moistures.hundreds");
 
 		(model->properties)[keynum] = m_ones;
 		(model->properties)[keynum+1] = m_liveh; 
@@ -820,19 +810,19 @@ namespace libforefire
 
 	int DataBroker::getMoisture(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = moistureLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->moistureLayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getTemperature(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = temperatureLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->temperatureLayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getAltitude(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = altitudeLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->altitudeLayer->getValueAt(fn);
 		return 1;
 	}
 
@@ -867,33 +857,33 @@ namespace libforefire
 
 	int DataBroker::getArrival_time_gradient(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = forcedArrivalTimeLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->forcedArrivalTimeLayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getSlope(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = slopeLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->slopeLayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getWindU(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = windULayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->windULayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getWindV(FireNode *fn, PropagationModel *model, int keynum)
 	{
-		(model->properties)[keynum] = windVLayer->getValueAt(fn);
+		(model->properties)[keynum] = model->dataBroker->windVLayer->getValueAt(fn);
 		return 1;
 	}
 
 	int DataBroker::getNormalWind(FireNode *fn, PropagationModel *model,
 								  int keynum)
 	{
-		double u = windULayer->getValueAt(fn);
-		double v = windVLayer->getValueAt(fn);
+		double u = model->dataBroker->windULayer->getValueAt(fn);
+		double v = model->dataBroker->windVLayer->getValueAt(fn);
 		FFVector wind = FFVector(u, v);
 		(model->properties)[keynum] = wind.scalarProduct(fn->getNormal());
 		return 1;
@@ -915,7 +905,7 @@ namespace libforefire
 	int DataBroker::getFrontFastestInSection(FireNode *fn, PropagationModel *model,
 											 int keynum)
 	{
-		(model->properties)[keynum] = fn->getLowestNearby(frontScanDistance);
+		(model->properties)[keynum] = fn->getLowestNearby(model->dataBroker->frontScanDistance);
 		return 1;
 	}
 
@@ -926,35 +916,35 @@ namespace libforefire
 	int DataBroker::getFuelProperties(FFPoint loc, const double &t, FluxModel *model,
 									  int start)
 	{
-		int numberOfValuesFilled = fuelLayer->getValuesAt(loc, t, model, start);
+		int numberOfValuesFilled = model->dataBroker->fuelLayer->getValuesAt(loc, t, model, start);
 		return numberOfValuesFilled;
 	}
 
 	int DataBroker::getMoisture(FFPoint loc, const double &t, FluxModel *model,
 								int keynum)
 	{
-		(model->properties)[keynum] = moistureLayer->getValueAt(loc, t);
+		(model->properties)[keynum] = model->dataBroker->moistureLayer->getValueAt(loc, t);
 		return 1;
 	}
 
 	int DataBroker::getAltitude(FFPoint loc, const double &t, FluxModel *model,
 								int keynum)
 	{
-		(model->properties)[keynum] = altitudeLayer->getValueAt(loc, t);
+		(model->properties)[keynum] = model->dataBroker->altitudeLayer->getValueAt(loc, t);
 		return 1;
 	}
 
 	int DataBroker::getWindU(FFPoint loc, const double &t, FluxModel *model,
 							 int keynum)
 	{
-		(model->properties)[keynum] = windULayer->getValueAt(loc, t);
+		(model->properties)[keynum] = model->dataBroker->windULayer->getValueAt(loc, t);
 		return 1;
 	}
 
 	int DataBroker::getWindV(FFPoint loc, const double &t, FluxModel *model,
 							 int keynum)
 	{
-		(model->properties)[keynum] = windVLayer->getValueAt(loc, t);
+		(model->properties)[keynum] = model->dataBroker->windVLayer->getValueAt(loc, t);
 		return 1;
 	}
 

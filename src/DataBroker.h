@@ -50,7 +50,7 @@ class DataBroker {
 
 	// Information concerning the fire model
 	FireDomain* domain; /*!< pointers to the domain */
-	static SimulationParameters* params;
+	SimulationParameters* params;
 
 	// Information concerning the atmospheric model
 	FFPoint atmoSWCorner, atmoNECorner; /*!< spatial limit of the domain */
@@ -67,17 +67,24 @@ class DataBroker {
 	list<DataLayer<double>* > layers; /*!< list of the different layers stored in the data broker */
 	list<FluxLayer<double>* > fluxLayers; /*!< list of the different flux layers stored in the data broker */
 
-	// Pre-defined layers
-	static DataLayer<double>* fuelLayer; /*!< predefined layer for fuel parameters */
-	static DataLayer<double>* dummyLayer; /*!< predefined layer for a dummy variable (optimization) */
-	static DataLayer<double>* altitudeLayer; /*!< predefined layer for the altitude (optimization) */
+	/* Pre-defined layers. These cache a lookup into layersMap, which is already
+	 * per-broker; as statics they made the second simulation reuse the first
+	 * one's terrain and wind, and skip creating its own. */
+	DataLayer<double>* fuelLayer = 0;  /*!< predefined layer for fuel parameters */
+	DataLayer<double>* dummyLayer = 0;  /*!< predefined layer for a dummy variable (optimization) */
+	DataLayer<double>* altitudeLayer = 0;  /*!< predefined layer for the altitude (optimization) */
 
-	static DataLayer<double>* forcedArrivalTimeLayer;
-	static DataLayer<double>* slopeLayer; /*!< predefined layer for the slope (optimization) */
-	static DataLayer<double>* moistureLayer; /*!< predefined layer for moisture (optimization) */
-	static DataLayer<double>* temperatureLayer; /*!< predefined layer for temperature (optimization) */
-	static DataLayer<double>* windULayer; /*!< predefined layer for longitudinal wind (optimization) */
-	static DataLayer<double>* windVLayer; /*!< predefined layer for lateral wind (optimization) */
+	DataLayer<double>* forcedArrivalTimeLayer = 0;
+	DataLayer<double>* slopeLayer = 0;  /*!< predefined layer for the slope (optimization) */
+	DataLayer<double>* moistureLayer = 0;  /*!< predefined layer for moisture (optimization) */
+	DataLayer<double>* temperatureLayer = 0;  /*!< predefined layer for temperature (optimization) */
+	DataLayer<double>* windULayer = 0;  /*!< predefined layer for longitudinal wind (optimization) */
+	DataLayer<double>* windVLayer = 0;  /*!< predefined layer for lateral wind (optimization) */
+
+	/*! \brief scan distance for the fastest-marker-in-section property
+	 *
+	 * Was a global in DataBroker.cpp, overwritten by every new simulation. */
+	double frontScanDistance = 1000.;
 
 
 
@@ -218,11 +225,11 @@ class DataBroker {
 public:
 
 	// Pre-defined layers
-	static FluxLayer<double>* heatFluxLayer; /*!< predefined layer for heat flux */
+	FluxLayer<double>* heatFluxLayer = 0;  /*!< predefined layer for heat flux */
 
 
-	static XYZTDataLayer<double>* PwindULayer; /*!< predefined layer for longitudinal wind (optimization) */
-	static XYZTDataLayer<double>* PwindVLayer; /*!< predefined layer for lateral wind (optimization) */
+	XYZTDataLayer<double>* PwindULayer = 0;  /*!< predefined layer for longitudinal wind (optimization) */
+	XYZTDataLayer<double>* PwindVLayer = 0;  /*!< predefined layer for lateral wind (optimization) */
 
 	/*! \brief default constructor */
 	DataBroker(FireDomain* = 0);

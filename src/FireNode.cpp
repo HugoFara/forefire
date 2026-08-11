@@ -18,16 +18,8 @@ const FireNode::stringToState FireNode::strtost = FireNode::createStateMap();
 const FireNode::stateToString FireNode::sttostr = FireNode::createStringMap();
 const string FireNode::altitude = "altitude";
 const string FireNode::slope = "slope";
-SimulationParameters* FireNode::params = SimulationParameters::GetInstance();
-bool FireNode::outputs = false;
-bool FireNode::fdepth = false;
-bool FireNode::ccurvature = false;
-FireNode::NormalScheme FireNode::nmlScheme = FireNode::medians;
-FireNode::CurvatureScheme FireNode::curvScheme = FireNode::circumradius;
-double FireNode::smoothing = 1;
-double FireNode::relax = 0.1;
-double FireNode::minSpeed = -1;
-double FireNode::minFrontDepth = 0.001;
+// The propagation settings that used to be defined here are now per-domain,
+// in FireDomain::fnSettings.
 
 // default constructor
 FireNode::FireNode(FireDomain* fd) : ForeFireAtom(0.), location()
@@ -156,6 +148,10 @@ void FireNode::update(){
 // Advance in time function
 void FireNode::timeAdvance(){
 
+	// Propagation settings belong to the domain, so that two simulations
+	// running side by side keep their own physics.
+	const FireDomain::FireNodeSettings& cfg = domain->fnSettings;
+
 	if ( currentState == moving ){
 
 		// Space-step of the firenodes
@@ -166,7 +162,7 @@ void FireNode::timeAdvance(){
 			if( assertCompatibleTopology() ){
 				computeLocalFrontProperties();
 			} else {
-				if ( outputs ){
+				if ( cfg.outputs ){
 					cout<<domain->getDomainID()
 							<<": PROBLEM, bad configuration for normal computing with:"<<endl;
 					getPrev() != 0 ? cout<<'\t'<<getPrev()->toShort() : cout<<'\t'<<getPrev();
@@ -175,10 +171,10 @@ void FireNode::timeAdvance(){
 					cout<<endl;
 				}
 			}
-			if ( fdepth ) {
+			if ( cfg.fdepth ) {
 				double newFrontDepth = domain->computeFrontDepth(this);
 				if ( frontDepth > EPSILONX ) {
-					frontDepth = (1.-relax)*frontDepth + relax*newFrontDepth;
+					frontDepth = (1.-cfg.relax)*frontDepth + cfg.relax*newFrontDepth;
 				} else {
 					frontDepth = newFrontDepth;
 				}
@@ -193,7 +189,7 @@ void FireNode::timeAdvance(){
 				newSpeed = ( prevSpeed + smoothing*localSpeed + nextSpeed )/(smoothing+2.);
 				}*/
 			if ( speed > EPSILONV ) {
-				speed = (1.-relax)*speed + relax*newSpeed;
+				speed = (1.-cfg.relax)*speed + cfg.relax*newSpeed;
 			} else {
 				speed = newSpeed;
 			}
@@ -202,7 +198,7 @@ void FireNode::timeAdvance(){
 
 		}
 
-		if (( speed > minSpeed )and(!fdepth or(frontDepth > minFrontDepth))){
+		if (( speed > cfg.minSpeed )and(!cfg.fdepth or(frontDepth > cfg.minFrontDepth))){
 
 			double dt = ds/speed;
 			if ( dt > dtMax ){
@@ -333,41 +329,8 @@ double FireNode::getCurvature(){
 	return curvature;
 }
 
-void FireNode::setNormalScheme(string scheme){
-	if ( scheme == "medians" or scheme == "Medians" ) nmlScheme = medians;
-	if ( scheme == "weightedMedians" ) nmlScheme = weightedMedians;
-	if ( scheme == "splines" or scheme == "Splines" ) nmlScheme = spline;
-}
-
-void FireNode::setCurvatureScheme(string scheme){
-	if ( scheme == "circumradius" ) curvScheme = circumradius;
-	if ( scheme == "angle" ) curvScheme = angle;
-}
-
-void FireNode::setFrontDepthComputation(const int& cfd){
-	fdepth = false;
-	if ( cfd != 0 ) fdepth = true;
-}
-
-void FireNode::setCurvatureComputation(const int& cc){
-	ccurvature = false;
-	if ( cc != 0 ) ccurvature = true;
-}
-
-void FireNode::setMinDepth(double mdepth){
-	minFrontDepth = mdepth;
-}
-void FireNode::setSmoothing(double smooth){
-	smoothing = smooth;
-}
-
-void FireNode::setRelax(double alpha){
-	relax = alpha;
-}
-
-void FireNode::setMinSpeed(double u){
-	minSpeed = u;
-}
+// The setters for the scheme and smoothing settings moved to FireDomain, as
+// they configure a whole simulation rather than a single node.
 
 // Mutators
 void FireNode::setState(State newState){
@@ -533,7 +496,7 @@ void FireNode::computeLocalFrontProperties(){
 	/* Computing the front properties */
 
 	// Computing both normal and curvature by spline interpolation
-	if ( nmlScheme == spline ){
+	if ( domain->fnSettings.nmlScheme == spline ){
 		front->splineInterp(this, normal, curvature);
 		return;
 	}
@@ -542,7 +505,7 @@ void FireNode::computeLocalFrontProperties(){
 	normal = computeNormal();
 
 	// Computing the curvature (if needed)
-	if ( ccurvature ) curvature = computeCurvature();
+	if ( domain->fnSettings.ccurvature ) curvature = computeCurvature();
 }
 double FireNode::getLowestNearby(double distanceNearby){
 	double lowest = location.getZ();
@@ -577,7 +540,7 @@ FFVector FireNode::computeNormal(){
 	FFVector tr = FFVector(pr.getX(),pr.getY());
 	FFVector nml;
 
-	if ( nmlScheme == medians ){
+	if ( domain->fnSettings.nmlScheme == medians ){
 		// Medians scheme
 		tl.normalize();
 		tr.normalize();
@@ -585,7 +548,7 @@ FFVector FireNode::computeNormal(){
 				, tl.getVx()+tr.getVx());
 		nml.normalize();
 
-	} else if ( nmlScheme == weightedMedians ) {
+	} else if ( domain->fnSettings.nmlScheme == weightedMedians ) {
 		// weighted medians scheme
 		double norml = tl.norm();
 		double normr = tr.norm();
@@ -618,7 +581,7 @@ double FireNode::computeCurvature(){
 	FFPoint nextPos = nextInFront->locAtTime(getTime());
 	FFPoint tr = nextPos - getLoc();
 
-	if ( curvScheme == circumradius ){
+	if ( domain->fnSettings.curvScheme == circumradius ){
 		/* Computing the circumradius of the triangle composed of the
 		 * three locations of the marker and its neighbors. The sign
 		 * is given by the orientation of the vector product. */
@@ -660,7 +623,7 @@ double FireNode::computeCurvature(){
 		if ( tl.getY()*tr.getX()-tl.getX()*tr.getY() < 0 ) return -kappa;
 		return kappa;
 
-	} else if ( curvScheme == angle ) {
+	} else if ( domain->fnSettings.curvScheme == angle ) {
 
 		/* Computing the angle between segments thanks to Al-Kashi */
 		double a = getLoc()      .distance2D(prevPos);

@@ -38,26 +38,16 @@
 	 const FFPoint FireDomain::outPoint
 	 = FFPoint(numeric_limits<double>::infinity(), numeric_limits<double>::infinity(),0);
  
-	 bool FireDomain::outputs = false;
-	 bool FireDomain::commandOutputs = false;
-	 bool FireDomain::recycleNodes = false;
-	 bool FireDomain::recycleFronts = false;
-	 
-	 std::list<FireDomain::distributedDomainInfo*> FireDomain::parallelDispatchDomains;
-	 std::list<FireNode*> FireDomain::createdNodes;
-	 std::list<FireNode*> FireDomain::trashNodes;
-	 std::list<FireFront*> FireDomain::trashFronts;
- 
-	 FireFrontData* FireDomain::mainFrontBackup;
-	 size_t FireDomain::atmoIterNumber = 0;
-	 FireDomain::FrontDepthScheme FireDomain::fdScheme = FireDomain::normalDir;
- 
 	 const size_t FireDomain::NUM_MAX_PROPMODELS;
 	 const size_t FireDomain::NUM_MAX_FLUXMODELS;
- 
-	 PropagationModel* FireDomain::propModelsTable[FireDomain::NUM_MAX_PROPMODELS];
-	 FluxModel* FireDomain::fluxModelsTable[FireDomain::NUM_MAX_FLUXMODELS];
- 
+
+	 // The simulation state that used to live here (the node and front recycling
+	 // pools, the model tables, the output flags, the front depth scheme and the
+	 // atmospheric iteration counter) is now per-instance, initialised in the
+	 // class definition. Only the instantiator maps below stay process-wide:
+	 // they map a model name to a factory function and are filled once at load
+	 // time by the static registration objects, then only read.
+
 	 FireDomain::PropModelMap& FireDomain::prop_instantiatorMap(){
 		 static FireDomain::PropModelMap* inst = new FireDomain::PropModelMap;
 		 return *inst;
@@ -1406,7 +1396,45 @@
 		 if ( scheme == "normalDir" or scheme == "normalDirection" ) fdScheme = normalDir;
 		 if ( scheme == "closest" ) fdScheme = closest;
 	 }
- 
+
+	 /* Settings shared by every FireNode of this domain. These setters were
+	  * statics of FireNode, so the last simulation configured won every time. */
+
+	 void FireDomain::setNormalScheme(string scheme){
+		 if ( scheme == "medians" or scheme == "Medians" ) fnSettings.nmlScheme = FireNode::medians;
+		 if ( scheme == "weightedMedians" ) fnSettings.nmlScheme = FireNode::weightedMedians;
+		 if ( scheme == "splines" or scheme == "Splines" ) fnSettings.nmlScheme = FireNode::spline;
+	 }
+
+	 void FireDomain::setCurvatureScheme(string scheme){
+		 if ( scheme == "circumradius" ) fnSettings.curvScheme = FireNode::circumradius;
+		 if ( scheme == "angle" ) fnSettings.curvScheme = FireNode::angle;
+	 }
+
+	 void FireDomain::setFrontDepthComputation(const int& cfd){
+		 fnSettings.fdepth = ( cfd != 0 );
+	 }
+
+	 void FireDomain::setCurvatureComputation(const int& cc){
+		 fnSettings.ccurvature = ( cc != 0 );
+	 }
+
+	 void FireDomain::setMinDepth(double mdepth){
+		 fnSettings.minFrontDepth = mdepth;
+	 }
+
+	 void FireDomain::setSmoothing(double smooth){
+		 fnSettings.smoothing = smooth;
+	 }
+
+	 void FireDomain::setRelax(double alpha){
+		 fnSettings.relax = alpha;
+	 }
+
+	 void FireDomain::setMinSpeed(double u){
+		 fnSettings.minSpeed = u;
+	 }
+
 	 // Computing the front depth from a firenode
 	 double FireDomain::computeFrontDepth(FireNode* fn){
  
@@ -2494,9 +2522,9 @@
 			 or params->getInt("watchedProc") == -1 ) {
 			 if ( params->getInt("CommandOutputs") != 0 ) commandOutputs = true;
 			 if ( params->getInt("FireDomainOutputs") != 0 ) outputs = true;
-			 if ( params->getInt("FireFrontOutputs") != 0 ) FireFront::outputs = true;
-			 if ( params->getInt("FireNodeOutputs") != 0 ) FireNode::outputs = true;
-			 if ( params->getInt("FDCellOutputs") != 0 ) FDCell::outputs = true;
+			 if ( params->getInt("FireFrontOutputs") != 0 ) frontOutputs = true;
+			 if ( params->getInt("FireNodeOutputs") != 0 ) fnSettings.outputs = true;
+			 if ( params->getInt("FDCellOutputs") != 0 ) cellOutputs = true;
 		 }
 		// std::cout<<"ID"<<getID()<< " la:"<< refLatitude<<" lo:"<<refLongitude<<" SOUTH:"<<params->getParameter("SOUTH")<<" WEST:"<<params->getParameter("WEST")<<" NORTH:"<<params->getParameter("NORTH")<<" EAST:"<<params->getParameter("EAST")<<endl;
  
@@ -2579,25 +2607,25 @@
 		 /*----------------------------------------------------*/
  
 		 if ( params->isValued("normalScheme") )
-			 FireNode::setNormalScheme(params->getParameter("normalScheme"));
+			 setNormalScheme(params->getParameter("normalScheme"));
 		 if ( params->isValued("curvatureComputation") )
-			 FireNode::setCurvatureComputation(params->getInt("curvatureComputation"));
+			 setCurvatureComputation(params->getInt("curvatureComputation"));
 		 if ( params->isValued("curvatureScheme") )
-			 FireNode::setCurvatureScheme(params->getParameter("curvatureScheme"));
+			 setCurvatureScheme(params->getParameter("curvatureScheme"));
 		 if ( params->isValued("frontDepthComputation") )
-			 FireNode::setFrontDepthComputation(params->getInt("frontDepthComputation"));
+			 setFrontDepthComputation(params->getInt("frontDepthComputation"));
 		 if ( params->isValued("frontDepthScheme") )
 			 setFrontDepthScheme(params->getParameter("frontDepthScheme"));
 		 if ( params->isValued("smoothing") )
-			 FireNode::setSmoothing(params->getDouble("smoothing"));
+			 setSmoothing(params->getDouble("smoothing"));
 		 if ( params->isValued("relax") )
-			 FireNode::setRelax(params->getDouble("relax"));
+			 setRelax(params->getDouble("relax"));
 		 if ( params->isValued("minSpeed") ){
  
-			 FireNode::setMinSpeed(params->getDouble("minSpeed"));
+			 setMinSpeed(params->getDouble("minSpeed"));
 		 }
 		 if ( params->isValued("minimalPropagativeFrontDepth") )
-			 FireNode::setMinDepth(params->getDouble("minimalPropagativeFrontDepth"));
+			 setMinDepth(params->getDouble("minimalPropagativeFrontDepth"));
 		 /*---------------------------------*/
 		 /* Defining the spatial properties */
 		 /*---------------------------------*/

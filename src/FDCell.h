@@ -42,7 +42,8 @@ class FDCell {
 
 public:
 
-	static bool outputs; /*! boolean for outputs */
+	/*! \brief debug printing flag, owned by the containing domain */
+	bool outputs() const;
 	size_t toDumpDomainID;/*! for paralleIO assigned Domain */
 	bool allDumped; /*! boolean to state it has fully dumped */
 	

@@ -996,10 +996,10 @@ namespace libforefire
                 /* ******************************************** */
                 /* Advancing the simulation to the desired time */
                 /* ******************************************** */
-                // cout<<getDomain()->getDomainID()<<"  iteration : "<<FireDomain::atmoIterNumber<<" and "<<getDomain()->getNumIterationAtmoModel()<<endl;
-                FireDomain::atmoIterNumber = FireDomain::atmoIterNumber + 1;
+                // cout<<getDomain()->getDomainID()<<"  iteration : "<<getDomain()->atmoIterNumber<<" and "<<getDomain()->getNumIterationAtmoModel()<<endl;
+                getDomain()->atmoIterNumber = getDomain()->atmoIterNumber + 1;
 
-                currentSession.params->setInt("atmoIterNumber", FireDomain::atmoIterNumber);
+                currentSession.params->setInt("atmoIterNumber", getDomain()->atmoIterNumber);
 
 //
 #ifdef MPI_COUPLING

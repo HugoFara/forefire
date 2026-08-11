@@ -51,7 +51,13 @@ class FireFront: public ForeFireAtom, Visitable {
 	size_t nspl;
 	double *h, *x, *y, *a, *b, *c, *rx, *ry, *d2x, *d2y, *u, *z, *gamma;
     size_t max_inner_front_nodes_filter;
-	static int frontNum;
+
+	/*!  \brief debug printing flag, owned by the containing domain
+	 *
+	 * Was a static, so enabling front outputs on one simulation enabled them
+	 * on every other one. Null-safe: fronts can be built without a domain.
+	 */
+	bool outputs() const;
 
 	/*!  \brief common initailization for all constructors */
 	void commonInitialization();
@@ -63,8 +69,6 @@ class FireFront: public ForeFireAtom, Visitable {
 	double distanceFromFront(const double&, const double&);
 
 public:
-
-	static bool outputs; /*! boolean for outputs */
 
 	/*! \brief Default constructor, to be avoided */
 	FireFront(FireDomain* = 0);

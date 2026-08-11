@@ -22,6 +22,11 @@ class DataBroker;
 
 class ForeFireModel {
 
+	/* The property getters in DataBroker are static, because they are stored
+	 * as plain function pointers. They reach the layers of the simulation they
+	 * belong to through the dataBroker of the model they are given. */
+	friend class DataBroker;
+
 protected:
 
 	/*! Link to data handler */

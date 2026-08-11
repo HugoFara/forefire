@@ -110,7 +110,7 @@ class FireDomain: public ForeFireAtom, Visitable {
 		normalDir = 0,
 		closest = 1
 	} ;
-	static FrontDepthScheme fdScheme; /*!< front depth scheme scheme */
+	FrontDepthScheme fdScheme = normalDir; /*!< front depth scheme scheme */
 	void setFrontDepthScheme(string);
 
 	double burningTresholdFlux;
@@ -129,10 +129,15 @@ class FireDomain: public ForeFireAtom, Visitable {
 	/* Trash related objects */
     /*-----------------------*/
 
-	/*! \brief trash lists for the atoms */
-	static list<FireNode*> createdNodes;
-	static list<FireNode*> trashNodes;
-	static list<FireFront*> trashFronts;
+	/*! \brief trash lists for the atoms
+	 *
+	 * Per-domain: a recycled node still points at the front, domain and data
+	 * broker it was created with, so handing one to another domain corrupts
+	 * both. These were static, which is why two simulations could not coexist.
+	 */
+	list<FireNode*> createdNodes;
+	list<FireNode*> trashNodes;
+	list<FireFront*> trashFronts;
 
 	/* Factories of models */
     /*---------------------*/
@@ -149,7 +154,7 @@ class FireDomain: public ForeFireAtom, Visitable {
 
 	/* backup of the simulation */
     /*--------------------------*/
-	static FireFrontData* mainFrontBackup;
+	FireFrontData* mainFrontBackup = 0;
 
 	/*---------------------------------------------------*/
 	/* VARIABLES AND ALGORITHMS FOR PARALLEL SIMULATIONS */
@@ -296,11 +301,11 @@ public:
 	using ListOfDistributedDomainBCellList = std::vector<DistributedDomainBCellList>;
 
 
-	static std::list<distributedDomainInfo*> parallelDispatchDomains;
+	std::list<distributedDomainInfo*> parallelDispatchDomains;
 
 	/* Propagation models */
 	static const size_t NUM_MAX_PROPMODELS = 50; /*!< maximum number of propagation models */
-	static PropagationModel* propModelsTable[NUM_MAX_PROPMODELS];
+	PropagationModel* propModelsTable[NUM_MAX_PROPMODELS] = {};
 	static int registerPropagationModelInstantiator(string, PropagationModelInstantiator);
 	void updateFuelTable( string , double );
 	PropagationModel* propModelInstanciation(const int&, string);
@@ -315,7 +320,7 @@ public:
 	FFPoint NELngLat; /*!< NorthEast Corner of the mesh */
 	/* Flux models */
 	static const size_t NUM_MAX_FLUXMODELS = 500; /*!< maximum number of flux models */
-	static FluxModel* fluxModelsTable[NUM_MAX_FLUXMODELS];
+	FluxModel* fluxModelsTable[NUM_MAX_FLUXMODELS] = {};
 	static int registerFluxModelInstantiator(string, FluxModelInstantiator);
 	FluxModel* fluxModelInstanciation(const int&, string);
 	void registerFluxModel(const int&, FluxModel*);
@@ -347,11 +352,44 @@ public:
 	double getLatFromY(double) ;
 	vector<double> getActiveBBoxLBRT();
 
-	static bool commandOutputs; /*! boolean for command outputs */
-	static bool outputs; /*! boolean for outputs */
-	static bool recycleNodes; // to recycle nodes in memory
-	static bool recycleFronts; //to recycle fronts in memory
-	static size_t atmoIterNumber;
+	bool commandOutputs = false; /*! boolean for command outputs */
+	bool outputs = false; /*! boolean for outputs */
+	bool frontOutputs = false; /*! boolean for the outputs of the fronts */
+	bool cellOutputs = false; /*! boolean for the outputs of the cells */
+	bool recycleNodes = false; // to recycle nodes in memory
+	bool recycleFronts = false; //to recycle fronts in memory
+	size_t atmoIterNumber = 0;
+
+	/*! \brief settings shared by every FireNode of this domain
+	 *
+	 * These were static members of FireNode, so a second simulation silently
+	 * reconfigured the physics of the first one. They belong to the domain:
+	 * every node reads them through its 'domain' pointer, which keeps them
+	 * live rather than snapshotted at node creation. DataBroker still turns
+	 * front depth and curvature on lazily while registering layers.
+	 */
+	struct FireNodeSettings {
+		bool outputs = false; /*!< boolean for outputs */
+		bool fdepth = false; /*!< computation of the front depth */
+		bool ccurvature = false; /*!< computation of the curvature */
+		double smoothing = 1.; /*!< spatial smoothing for the velocity */
+		double relax = 0.1; /*!< relaxation for the velocity */
+		double minSpeed = -1.; /*!< minimum speed allowed */
+		double minFrontDepth = 0.001; /*!< minimum front depth allowed */
+		FireNode::NormalScheme nmlScheme = FireNode::medians;
+		FireNode::CurvatureScheme curvScheme = FireNode::circumradius;
+	};
+	FireNodeSettings fnSettings;
+
+	/*! \brief setters for the FireNode settings, formerly statics of FireNode */
+	void setNormalScheme(string);
+	void setCurvatureScheme(string);
+	void setCurvatureComputation(const int&);
+	void setFrontDepthComputation(const int&);
+	void setSmoothing(double);
+	void setMinDepth(double);
+	void setRelax(double);
+	void setMinSpeed(double);
 
 
 	bool atmosphericCoupling; /*! boolean for coupled simulations */

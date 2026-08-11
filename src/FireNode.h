@@ -41,7 +41,6 @@ class FireNodeData;
 class FireNode : public ForeFireAtom, Visitable {
 
 	static const double Pi;
-	static SimulationParameters* params;
 
 	FFPoint location; /*!< location of the FireNode */
 	FFVector velocity; /*!< velocity of the fire node */
@@ -59,18 +58,11 @@ class FireNode : public ForeFireAtom, Visitable {
 	static const string altitude; /*!< string shortcut for altitude */
 	static const string slope; /*!< string shortcut for slope */
 
-	static bool fdepth; /*!< boolean for the computation of the front depth */
-	static bool ccurvature; /*!< boolean for the computation of the curvature */
-
-	static double smoothing; /*!< spatial smoothing for the velocity */
-	static double relax; /*!< relaxation for the velocity */
-
-	static double minSpeed; /*!< minimum speed allowed */
-	static double minFrontDepth;
+	/* The propagation settings and the output flag used to be statics here,
+	 * which made them process-wide. They now live in FireDomain::fnSettings
+	 * and are read through the 'domain' pointer below. */
 
 public:
-
-	static bool outputs; /*! boolean for outputs */
 
 	/*!  \brief state of the firenode */
 	enum State {
@@ -121,32 +113,14 @@ public:
 		weightedMedians = 1,
 		spline = 2
 	} ;
-	static NormalScheme nmlScheme; /*!< normal scheme */
-	static void setNormalScheme(string);
 
 	/*!  \brief curvature scheme */
 	enum CurvatureScheme {
 		circumradius = 0,
 		angle = 1
 	} ;
-	static CurvatureScheme curvScheme; /*!< curvature scheme */
-	static void setCurvatureScheme(string);
-
-	/*!  \brief booleans for the computation of
-	 * the local and global interface properties */
-	static void setCurvatureComputation(const int&);
-	static void setFrontDepthComputation(const int&);
-
-	/*!  \brief smoothing in the speed computation */
-	static void setSmoothing(double);
-	static void setMinDepth(double);
-
-
-	/*!  \brief relaxation in the speed computation */
-	static void setRelax(double);
-
-	/*!  \brief minimum speed allowed */
-	static void setMinSpeed(double);
+	/* The scheme values and their setters moved to FireDomain: they configure a
+	 * whole simulation, not one node. See FireDomain::fnSettings. */
 
 	/*! \brief Default constructor */
 	FireNode(FireDomain* = 0);

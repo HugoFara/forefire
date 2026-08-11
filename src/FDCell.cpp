@@ -13,7 +13,11 @@
 namespace libforefire {
 
 const double FDCell::infinity = numeric_limits<double>::infinity();
-bool FDCell::outputs = false;
+
+// Was a static flag shared by every simulation in the process.
+bool FDCell::outputs() const {
+	return domain != 0 and domain->cellOutputs;
+}
 
 FDCell::FDCell(FireDomain* fd, size_t nx, size_t ny) :
 		domain(fd), mapSizeX(nx), mapSizeY(ny) {
@@ -411,7 +415,7 @@ void FDCell::validateTopology(string call){
 		domain->addToTrashNodes(toBeTrashed.back());
 		toBeTrashed.pop_back();
 	}
-	if ( outputs ) cout<<debugOutput.str();
+	if ( outputs() ) cout<<debugOutput.str();
 }
 
 void FDCell::makeTrash(){

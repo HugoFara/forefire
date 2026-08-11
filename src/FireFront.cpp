@@ -11,9 +11,11 @@
 
 namespace libforefire{
 
-// Static variables
-int FireFront::frontNum = 1;
-bool FireFront::outputs = false;
+// The output flag and the front counter that used to be static here are gone:
+// the flag belongs to the domain, the counter was unused.
+bool FireFront::outputs() const {
+	return domain != 0 and domain->frontOutputs;
+}
 
 FireFront::FireFront(FireDomain* fd) : ForeFireAtom(0.), domain(fd) {
 	getNewID(fd->getDomainID());
@@ -533,7 +535,7 @@ void FireFront::split(FireNode* fna, const double& t){
 	 * Otherwise taking the middle of the arc passing through the two
 	 * locations and with radius as the mean of the two curvature radius */
 
-	if (outputs) cout<<domain->getDomainID()<<": split between "
+	if (outputs()) cout<<domain->getDomainID()<<": split between "
 			<<fna->toShort()<<" and "<<fna->getNext()->toShort()<<endl;
 
 	/* Common part for all normal schemes */
@@ -557,7 +559,7 @@ void FireFront::split(FireNode* fna, const double& t){
 	double meanCurvature = meanRadius == 0 ? 0. : 1./meanRadius;
 
 	/* If normal scheme is not 'medians', computing a better position */
-	if ( fna->nmlScheme != FireNode::medians ){
+	if ( domain->fnSettings.nmlScheme != FireNode::medians ){
 		double dist = fna->getLoc().distance2D(fnb->locAtTime(t));
 		if ( abs(meanRadius) > 0.5*dist ){
 			FFPoint tt = fnb->locAtTime(t) - fna->getLoc();
@@ -573,7 +575,7 @@ void FireFront::split(FireNode* fna, const double& t){
 	}
 
 	if ( !domain->withinPhysicalDomain(splitLoc) ){
-		if (outputs) cout<<domain->getDomainID()
+		if (outputs()) cout<<domain->getDomainID()
 				<<": "<<'\t'<<"split is not physical"
 				<<" (location is "<<splitLoc.print()<<")"<<endl;
 		/* the split node shouldn't be created */
@@ -603,32 +605,32 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 
 		/* test to see if merging successive nodes */
 		if ( fna == fnb->getNext() or fnb == fna->getNext() ){
-			if (outputs) cout<<getDomainID()
+			if (outputs()) cout<<getDomainID()
 					<<": merging successive nodes"<<endl;
 			if ( fnb->getDomainID() != getDomainID() ){
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<fnb->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fnb->toString()<<endl;
 				domain->addToTrashNodes(fnb);
 				fna->setState(FireNode::moving);
 			} else {
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
 				domain->addToTrashNodes(fna);
 				fnb->setState(FireNode::moving);
 			}
 			// less than 5 nodes total... I need to trash my front, it is too small
 			if ( getNumFN() < 5 ){
-				if (outputs) cout<<getDomainID()
+				if (outputs()) cout<<getDomainID()
 						<<": not enough nodes left in "<<toString()<<" ("
 						<<getNumFN()<<"), trashing it"<<endl;
 				FireNode* curfn = headNode;
 				FireNode* next;
 				for ( int numfn = getNumFN()-1; numfn > 0; numfn-- ){
 					next = curfn->getNext();
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 					curfn = next;
 				}
 				if ( curfn != 0 ){
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 				}
 				domain->addToTrashFronts(this);
@@ -642,21 +644,21 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		/* If there is only one node between the two
 		 * merging nodes, I just trash this node */
 		if ( fna->getPrev() == fnb->getNext() ){
-			if (outputs) cout<<getDomainID()
+			if (outputs()) cout<<getDomainID()
 					<<": merging quasi-successive nodes"<<endl;
-			if ( outputs ) cout<<"trashing in FireFront::merge : "<<fna->getPrev()->toString()<<endl;
+			if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fna->getPrev()->toString()<<endl;
 			domain->addToTrashNodes(fna->getPrev());
 			if ( getNumFN() < 5 ){
 				FireNode* curfn = headNode;
 				FireNode* next;
 				for ( int numfn = getNumFN()-1; numfn > 0; numfn-- ){
 					next = curfn->getNext();
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 					curfn = next;
 				}
 				if ( curfn != 0 ){
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 				}
 				domain->addToTrashFronts(this);
@@ -666,21 +668,21 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 			return;
 		}
 		if ( fna->getNext() == fnb->getPrev() ){
-			if (outputs) cout<<getDomainID()
+			if (outputs()) cout<<getDomainID()
 					<<": merging quasi-successive nodes"<<endl;
-			if ( outputs ) cout<<"trashing in FireFront::merge : "<<fna->getNext()->toString()<<endl;
+			if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fna->getNext()->toString()<<endl;
 			domain->addToTrashNodes(fna->getNext());
 			if ( getNumFN() < 5 ){
 				FireNode* curfn = headNode;
 				FireNode* next;
 				for ( int numfn = getNumFN()-1; numfn > 0; numfn-- ){
 					next = curfn->getNext();
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 					curfn = next;
 				}
 				if ( curfn != 0 ){
-					if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+					if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 					domain->addToTrashNodes(curfn);
 				}
 				domain->addToTrashFronts(this);
@@ -699,7 +701,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		/* Otherwise that means that i am merging with myself,
 		 * with an inner front.I start by imagine that the
 		 * node i'm merging with is in the outer, original front */
-		if (outputs) cout<<getDomainID()
+		if (outputs()) cout<<getDomainID()
 				<<": creating an inner front at "<<fna->getTime()<<endl;
 		FireNode* pa = fna->getPrev();
 		FireNode* b = fnb;
@@ -715,11 +717,11 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		setHead(fnb);
 
 		/* everyone is linked I can trash me now */
-		if ( outputs ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
+		if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
 		domain->addToTrashNodes(fna);
 		fnb->setState(FireNode::moving);
                 /* /!\ Debug  part /!\ */
-                if ( outputs ){
+                if ( outputs() ){
                   cout<<"Debug part : "<<fnb->toString()<<endl;
                   cout<<"Previous : "<<fnb->getPrev()->toString()<<endl;
                   cout<<"Next : "<<fnb->getNext()->toString()<<endl;
@@ -731,7 +733,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		double areaA = getLocalArea(fnb);
 		double areaB = getLocalArea(nb);
 		if( abs(areaA) < abs(areaB) ){
-			if (outputs) cout<<getDomainID()
+			if (outputs()) cout<<getDomainID()
 					<<": inverting the inner and outer fronts"<<endl;
 			fnC = b;
 			b = pa;
@@ -749,12 +751,12 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 			FireNode* next;
 			for ( int numfn = getNumFN()-1; numfn > 0; numfn-- ){
 				next = curfn->getNext();
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 				domain->addToTrashNodes(curfn);
 				curfn = next;
 			}
 			if ( curfn != 0 ){
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 				domain->addToTrashNodes(curfn);
 			}
 			domain->addToTrashFronts(this);
@@ -765,7 +767,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		}
 
 		/* Otherwise I need to dispatch the nodes in a new inner front */
-		if ( outputs ) cout<<getDomainID()
+		if ( outputs() ) cout<<getDomainID()
 				<<": creating a new inner front"<<endl;
                 FireFront* tmpFront = domain->addFireFront(mergeTime,this);
 		fnC = pa;
@@ -776,19 +778,19 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 		}
 		/* If I have not enough nodes in the inner front I need to trash it */
 		if ( tmpFront->getNumFN() < max_inner_front_nodes_filter ){
-			if (outputs) cout<<getDomainID()
+			if (outputs()) cout<<getDomainID()
 					<<": trashing inner front "<<tmpFront->toString()<<" because of lack of nodes ("
 					<<tmpFront->getNumFN()<<" nodes in the front)"<<endl;
 			FireNode* curfn = tmpFront->getHead();
 			FireNode* next;
 			for ( int numfn = tmpFront->getNumFN()-1; numfn > 0; numfn-- ){
 				next = curfn->getNext();
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 				domain->addToTrashNodes(curfn);
 				curfn = next;
 			}
 			if ( curfn != 0 ){
-				if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+				if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
 				domain->addToTrashNodes(curfn);
 			}
 			domain->addToTrashFronts(tmpFront);
@@ -798,7 +800,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
                 else{
                   // Firstly, we do the same as in Case 1. This will split
                   // the polygon in 2 parts.
-                  if (outputs) cout<<getDomainID()
+                  if (outputs()) cout<<getDomainID()
                                    <<": creating an inner front at "<<fna->getTime()<<endl;
                   FireNode* pa = fna->getPrev();
                   FireNode* b = fnb;
@@ -814,7 +816,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
                   setHead(fnb);
 
                   /* everyone is linked I can trash me now */
-                  if ( outputs ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
+                  if ( outputs() ) cout<<"trashing in FireFront::merge : "<<fna->toString()<<endl;
                   domain->addToTrashNodes(fna);
                   fnb->setState(FireNode::moving);
 
@@ -823,7 +825,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
                   double areaA = getLocalArea(fnb);
                   double areaB = getLocalArea(nb);
                   if( abs(areaA) < abs(areaB) ){
-                    if (outputs) cout<<getDomainID()
+                    if (outputs()) cout<<getDomainID()
                                      <<": inverting the inner and outer fronts"<<endl;
                     fnC = b;
                     b = pa;
@@ -831,7 +833,7 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
                     setHead(b);
                   }
                   // One of the 2 parts will belong to another FireFront
-                  if ( outputs ) cout<<getDomainID()
+                  if ( outputs() ) cout<<getDomainID()
                                      <<": creating a new inner front"<<endl;
                   FireFront* tmpFront = domain->addFireFront(mergeTime,this);
                   fnC = pa;
@@ -843,19 +845,19 @@ void FireFront::merge(FireNode* fna, FireNode* fnb){
 
                   // Same for the second part
                   if ( tmpFront->getNumFN() < 5 ){
-                    if (outputs) cout<<getDomainID()
+                    if (outputs()) cout<<getDomainID()
                                      <<": trashing inner front "<<tmpFront->toString()<<" because of lack of nodes ("
                                      <<tmpFront->getNumFN()<<" nodes in the front)"<<endl;
                     FireNode* curfn = tmpFront->getHead();
                     FireNode* next;
                     for ( int numfn = tmpFront->getNumFN()-1; numfn > 0; numfn-- ){
                       next = curfn->getNext();
-                      if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+                      if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
                       domain->addToTrashNodes(curfn);
                       curfn = next;
                     }
                     if ( curfn != 0 ){
-                      if ( outputs ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
+                      if ( outputs() ) cout<<"trashing in FireFront::merge : "<<curfn->toString()<<endl;
                       domain->addToTrashNodes(curfn);
                     }
                     domain->addToTrashFronts(tmpFront);
@@ -878,7 +880,7 @@ void FireFront::mergeInnerFronts(FireNode* fna, FireNode* fnb){
 		/* merging two inner firefronts, this should create
 		 * a new firefront with all the firenodes */
 		// affecting all the firenodes of front b to front a
-		if (outputs) cout<<domain->getDomainID()<<": "<<"merging firenode "
+		if (outputs()) cout<<domain->getDomainID()<<": "<<"merging firenode "
 				<<fna->toShort()<<" from front "<<fna->getFront()
 				<<" ("<<fna->getFront()->getNumFN()<<" firenodes)"<<endl<<"with firenode "
 				<<fnb->toShort()<<" with front "<<fnb->getFront()
@@ -912,14 +914,14 @@ void FireFront::mergeInnerFronts(FireNode* fna, FireNode* fnb){
 		tmpFront->extend();
 		// adding the merging firenodes to the trash nodes
 		fna->setFront(0);
-		if (outputs) cout<<domain->getDomainID()
+		if (outputs()) cout<<domain->getDomainID()
 				<<": FireFront::mergeInnerFronts -> ";
-		if ( outputs ) cout<<"trashing in FireFront::mergeInnerFronts : "<<fna->toString()<<endl;
+		if ( outputs() ) cout<<"trashing in FireFront::mergeInnerFronts : "<<fna->toString()<<endl;
 		domain->addToTrashNodes(fna);
 		fnb->setFront(0);
-		if (outputs) cout<<domain->getDomainID()
+		if (outputs()) cout<<domain->getDomainID()
 				<<": FireFront::mergeInnerFronts -> ";
-		if ( outputs ) cout<<"trashing in FireFront::mergeInnerFronts : "<<fnb->toString()<<endl;
+		if ( outputs() ) cout<<"trashing in FireFront::mergeInnerFronts : "<<fnb->toString()<<endl;
 		domain->addToTrashNodes(fnb);
 
 		// Scanning the region for burning status
