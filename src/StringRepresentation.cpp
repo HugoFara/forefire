@@ -24,19 +24,13 @@ using namespace std;
 
 namespace libforefire {
 
-// static variables initialization
-size_t StringRepresentation::currentLevel = 0;
-ostringstream StringRepresentation::outputstr("");
-bool writedOnce = false;
-string outPattern;
-FireDomain* domain = 0;
-
-// --- GEOJSON Aggregation Variables ---
-// For GEOJSON mode we aggregate rings per top-level front.
-// Each top-level feature (currentLevel==1) will be represented as a vector of rings,
-// where each ring is a vector of coordinate strings.
-static bool firstGeoFeature = true;  // used when outputting the feature list
-static std::vector< std::vector<std::string> > geojson_current_feature;
+// The output buffer, the nesting level, the output pattern and the GeoJSON
+// aggregation state used to be globals here, so two simulations printing at
+// the same time wrote into one buffer. They are members now.
+//
+// For GEOJSON mode we aggregate rings per top-level front. Each top-level
+// feature (currentLevel==1) is a vector of rings, where each ring is a vector
+// of coordinate strings.
 
 StringRepresentation::StringRepresentation(FireDomain* fdom) : Visitor() {
     lastLevel = -1;

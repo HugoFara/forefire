@@ -18,13 +18,22 @@ namespace libforefire {
 class StringRepresentation: public Visitor {
 
 	FireDomain* domain;
-	static size_t currentLevel;
+
+	/* These were statics, shared by every simulation in the process: two
+	 * concurrent print[] calls interleaved into one buffer. */
+	size_t currentLevel = 0;
+	bool firstGeoFeature = true; /*!< first feature of the GeoJSON list */
+	std::vector< std::vector<std::string> > geojson_current_feature;
 
 	double updateStep;
 
 public:
 
-	static ostringstream outputstr;
+	/*! \brief buffer the representation is built into
+	 *
+	 * Was static, so two simulations printing at once interleaved into one
+	 * buffer. Command::dumpString reads it, hence public. */
+	ostringstream outputstr;
 
 /*	StringRepresentation();*/
 	StringRepresentation(FireDomain*);
@@ -63,6 +72,7 @@ public:
 	string outPattern;
     int dumpMode;
     int lastLevel;
+	bool writedOnce = false; /*!< whether a dump has already been written */
 };
 
 }
