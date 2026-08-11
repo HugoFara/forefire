@@ -53,7 +53,6 @@ template<typename T> class PropagativeLayer : public DataLayer<T> {
 
 
 
-	SimulationParameters* params;
 
 	/*! \brief obtains the position in the array for given location and time */
 	size_t getPosInMap(FFPoint, const double);
@@ -69,7 +68,6 @@ public:
 		propModelIndexMap = new int[mapSize];
 		*propModelIndexMap = index;
 
-		params = SimulationParameters::GetInstance();
 	}
 	/*! \brief Constructor with all necessary information */
 	PropagativeLayer(string name, int* map, FFPoint& swc, double& t0
@@ -94,7 +92,6 @@ public:
 		mapDz = extent.getZ()/mapNz;
 		mapDt = timespan/mapNt;
 
-		params = SimulationParameters::GetInstance();
 	};
 	/*! \brief Destructor */
 	virtual ~PropagativeLayer(){

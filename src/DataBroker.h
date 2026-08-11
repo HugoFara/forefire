@@ -247,6 +247,9 @@ public:
 	/*! \brief registering a layer in the data broker */
 	void registerLayer(string, DataLayer<double>*);
 
+	/*! \brief accessor to the parameter set of the simulation served */
+	SimulationParameters* getParameters(){ return params; }
+
 	/*! \brief registering a flux layer in the data broker */
 	void registerFluxLayer(string, FluxLayer<double>*);
 

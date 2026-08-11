@@ -97,7 +97,9 @@ void FireFront::commonInitialization(){
 	vertx = 0;
 	verty = 0;
 	nvert = 0;
-	max_inner_front_nodes_filter = 	SimulationParameters::GetInstance()->getInt("max_inner_front_nodes_filter");
+	// Fronts can be built without a domain, so fall back to the process-wide set.
+	max_inner_front_nodes_filter = ( domain != 0 ? domain->getParameters()
+			: SimulationParameters::GetInstance() )->getInt("max_inner_front_nodes_filter");
 }
 
 FireDomain* FireFront::getDomain(){

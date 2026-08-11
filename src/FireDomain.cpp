@@ -64,7 +64,8 @@
 	 }	
  
 	 FireDomain::FireDomain(const double& t
-							, FFPoint& swc, FFPoint& nec)
+							, FFPoint& swc, FFPoint& nec
+							, SimulationParameters* simParams)
 	 : ForeFireAtom(t), SWCorner(swc), NECorner(nec) {
 		 isFireActive = false;
 		 refLatitude = 0.;
@@ -72,7 +73,8 @@
 		 atmosphericCoupling = false;
 		 propagationSpeedAdjustmentFactor =1;
 		 //parallelDispatchDomains.size() = 0;
-		 params = SimulationParameters::GetInstance();
+		 // 0 means "no simulation-owned set", which is what the C API passes.
+		 params = simParams != 0 ? simParams : SimulationParameters::GetInstance();
 		 numIterationAtmoModel = 0;
 		 // Maximum time-step for Firenodes is not constrained
 		 dtMax = numeric_limits<double>::infinity();
@@ -190,13 +192,15 @@
 							, const double& lat, const double& lon
 							, const int& mdimx, const double* meshx
 							, const int& mdimy, const double* meshy
-							, const int& mdimz, const double& dt)
+							, const int& mdimz, const double& dt
+							, SimulationParameters* simParams)
 	 : ForeFireAtom(t), refLatitude(lat), refLongitude(lon) {
  
 		 getNewID(mpirank);
 		 isFireActive = false;
 		 numIterationAtmoModel = 0;
-		 params = SimulationParameters::GetInstance();
+		 // 0 means "no simulation-owned set", which is what the C API passes.
+		 params = simParams != 0 ? simParams : SimulationParameters::GetInstance();
  
 		 // Maximum time-step for Firenodes is constrained by the atmospheric model
 		 dtMax = dt;
@@ -217,7 +221,7 @@
 		 params->setSize("atmoNZ", atmoNZ);
  
 	 string ffOutputsPattern(params->getParameter("caseDirectory")+'/'+params->getParameter("fireOutputDirectory")+'/'+params->getParameter("outputFiles")+"."+params->getParameter("mpirank"));
-	 SimulationParameters::GetInstance()->setParameter("ffOutputsPattern", ffOutputsPattern);
+	 params->setParameter("ffOutputsPattern", ffOutputsPattern);
  
 	 
  

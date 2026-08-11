@@ -49,7 +49,11 @@ namespace libforefire
           numAtmoIterations(0),
           refTime(0),
           currentSession{
-              SimulationParameters::GetInstance(),
+              // Its own parameter set, not the process-wide one: two
+              // simulations otherwise overwrite each other's configuration,
+              // and Command::goTo writes atmoIterNumber on every step, which
+              // corrupted the shared map when two threads stepped at once.
+              new SimulationParameters(),
               0, 0, 0, 0, 0, 0, 0,
               &cout,
               0,
@@ -60,6 +64,11 @@ namespace libforefire
 
     Command::~Command()
     {
+        // The session owns its parameter set, so it frees it. quit() nulls the
+        // pointer after deleting it, because CLibForeFire's executor is a
+        // static whose destructor still runs on the way out of exit().
+        delete currentSession.params;
+        currentSession.params = 0;
     }
 
     void Command::increaseLevel()
@@ -92,7 +101,7 @@ namespace libforefire
                     double secs;
                     std::vector<double> xhatValues, yhatValues;
                     double deltaY = 0.0, deltaX = 0.0;
-                    SimulationParameters *simParam = SimulationParameters::GetInstance();
+                    SimulationParameters *simParam = currentSession.params;
                     if (simParam->ISODateDecomposition(timeStampDomain, secs, year, yday))
                     {
                         simParam->setInt("refYear", year);
@@ -181,7 +190,7 @@ namespace libforefire
                     
                     currentSession.params->setParameter("runmode", "masterMNH");
 
-                    currentSession.fdp = new FireDomain(t, SW, NE);
+                    currentSession.fdp = new FireDomain(t, SW, NE, currentSession.params);
                     currentSession.fdp->setTimeTable(currentSession.tt);
                     currentSession.ff = currentSession.fdp->getDomainFront();
 
@@ -201,7 +210,7 @@ namespace libforefire
             }
             else
             {
-                currentSession.fd = new FireDomain(t, SW, NE);
+                currentSession.fd = new FireDomain(t, SW, NE, currentSession.params);
 
                 /* setting up the pointer to the domain */
 
@@ -238,7 +247,7 @@ namespace libforefire
     int Command::startFire(const string &arg, size_t &numTabs)
     {
         double t = getDomain()->getTime();
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
     
         // Process time and date in any case.
         double nt = getFloat("t", arg);
@@ -1115,7 +1124,7 @@ namespace libforefire
                 }
             }
         }
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
         simParam->setParameter("ISOdate", simParam->FormatISODate(simParam->getInt("refTime") + getDomain()->getSimulationTime(), getDomain()->getReferenceYear(), getDomain()->getReferenceDay()));
  
         return normal;
@@ -1126,7 +1135,7 @@ namespace libforefire
         if (getDomain() == 0)
             return normal;
 
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
         string finalStr = "";
 
         if (arg.size() > 0)
@@ -1173,7 +1182,7 @@ namespace libforefire
     }
     int Command::systemExec(const string &arg, size_t &numTabs)
     {
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
         string finalStr;
 
         if (!arg.empty())
@@ -1283,7 +1292,7 @@ namespace libforefire
         if (getDomain() == nullptr)
             return normal;
 
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
 
         if (!arg.empty())
         {
@@ -2214,7 +2223,7 @@ namespace libforefire
         {
             if (iso == stringError)
                 return FLOATERROR;
-            SimulationParameters *simParam = SimulationParameters::GetInstance();
+            SimulationParameters *simParam = currentSession.params;
             int year = 0, yday = 0;
             double secs = 0.;
             if (!simParam->ISODateDecomposition(iso, secs, year, yday))
@@ -2576,7 +2585,7 @@ namespace libforefire
                 std::cout << "No domain available to save." << std::endl;
                 return error;
             }
-            SimulationParameters *simParam = SimulationParameters::GetInstance();
+            SimulationParameters *simParam = currentSession.params;
 
             NcDim stringDim = dataFile.addDim("string1", 1);
             NcVar domVar = dataFile.addVar("domain", ncChar, stringDim);
@@ -2828,7 +2837,7 @@ namespace libforefire
             return error;
         }
 
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = currentSession.params;
         string path = simParam->GetPath(args[0]);
 
         if (std::ifstream(path.c_str()).fail())
@@ -2953,6 +2962,7 @@ namespace libforefire
         delete currentSession.outStrRep;
         delete currentSession.sim;
         delete currentSession.params;
+        currentSession.params = 0;
         exit(0);
         return normal;
     }

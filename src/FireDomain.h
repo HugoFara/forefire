@@ -397,8 +397,11 @@ public:
 	bool isFireActive; /*! boolean if some has been read*/
 	/*! \brief Default constructor */
 	FireDomain();
-	/*! \brief Constructor with boundaries and time */
-	FireDomain(const double&, FFPoint&, FFPoint&);
+	/*! \brief Constructor with boundaries and time
+	 *
+	 * The trailing parameter set is the one the simulation runs on. Passing 0
+	 * falls back to the process-wide set, which is what the C API wants. */
+	FireDomain(const double&, FFPoint&, FFPoint&, SimulationParameters* = 0);
 	/*! \brief Constructor with boundaries, time and reference longitude and latitude */
 	FireDomain(const int&
 			, const int&, const int&
@@ -406,7 +409,8 @@ public:
 			, const double&, const double&
 			, const int&, const double*
 			, const int&, const double*
-			, const int&, const double&);
+			, const int&, const double&
+			, SimulationParameters* = 0);
 	/*! \brief Destructor */
 	virtual ~FireDomain();
 
@@ -427,6 +431,9 @@ public:
 	FireFront* getDomainFront();
 	TimeTable* getTimeTable();
 	DataBroker* getDataBroker();
+
+	/*! \brief accessor to the parameter set this simulation runs on */
+	SimulationParameters* getParameters(){ return params; }
 	FDCell* getCell(const int&, const int&);
 	FDCell* getCell(FFPoint);
 	FDCell* getCell(FireNodeData*);

@@ -38,7 +38,6 @@ template<typename T> class BurningRatioLayer : public DataLayer<T> {
 	double latestCall; /*!< time of the latest call to getMatrix() */
 
 
-	SimulationParameters* params;
 
 	/*! \brief interpolation method: lowest order */
 	T getNearestData(FFPoint);
@@ -51,7 +50,6 @@ public:
 		size = nx*ny;
 		ratioMap = new FFArray<T>("BRatio", 0., nx, ny);
 		latestCall = -1.;
-		params = SimulationParameters::GetInstance();
 	};
 	/*! \brief Destructor */
 	virtual ~BurningRatioLayer(){
@@ -145,11 +143,11 @@ void BurningRatioLayer<T>::getMatrix(
 	// Affecting the computed matrix to the desired array
 	*matrix = ratioMap;
 /*
-	if ( params->getInt("surfaceOutputs") != 0 ) {
+	if ( this->params->getInt("surfaceOutputs") != 0 ) {
 		// dumping in a binary file for output
 		FFPoint plotOrigin = FFPoint();
 		size_t nomesh = 1;
-		dumpAsBinary(params->getParameter("ffOutputsPattern"), t
+		dumpAsBinary(this->params->getParameter("ffOutputsPattern"), t
 				, plotOrigin, plotOrigin, nomesh, nomesh);
 	}
 */

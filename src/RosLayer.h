@@ -39,7 +39,6 @@ template<typename T> class RosLayer : public DataLayer<T> {
 	double latestCall; /*!< time of the latest call to getMatrix() */
 
 
-	SimulationParameters* params;
 
 	/*! \brief interpolation method: lowest order */
 	T getNearestData(FFPoint);
@@ -52,7 +51,6 @@ public:
 		size = nx*ny;
 		rosMap = new FFArray<T>("Ros", 0., nx, ny);
 		latestCall = -1.;
-		params = SimulationParameters::GetInstance();
 	};
 	/*! \brief Destructor */
 	virtual ~RosLayer(){

@@ -36,9 +36,9 @@ StringRepresentation::StringRepresentation(FireDomain* fdom) : Visitor() {
     lastLevel = -1;
     domain = fdom;
     
-    outPattern = SimulationParameters::GetInstance()->getParameter("ffOutputsPattern");
+    outPattern = domain->getParameters()->getParameter("ffOutputsPattern");
     setTime(domain->getTime());
-    updateStep = SimulationParameters::GetInstance()->getDouble("outputsUpdate");
+    updateStep = domain->getParameters()->getDouble("outputsUpdate");
     setUpdateTime(domain->getTime());
     dumpMode = FF_MODE;  // default; will be set by dumpStringRepresentation()
 }
@@ -84,7 +84,7 @@ void StringRepresentation::output() {
 
 // Visit the domain: outputs the header and resets GEOJSON flags.
 void StringRepresentation::visit(FireDomain* fd) {
-    SimulationParameters *simParam = SimulationParameters::GetInstance();
+    SimulationParameters *simParam = domain->getParameters();
     if (dumpMode == JSON_MODE) {
         outputstr << '{' << endl << "\t\"fronts\": [";
         lastLevel = 0;
@@ -122,7 +122,7 @@ void StringRepresentation::visit(FireFront* ff) {
     }
     else if (dumpMode == JSON_MODE) {
         // (JSON mode unchanged)
-        SimulationParameters *simParam = SimulationParameters::GetInstance();
+        SimulationParameters *simParam = domain->getParameters();
         if (ff->getDomain()->getSimulationTime() >= ff->getTime()) {
             if (lastLevel >= 2)
                 outputstr << '"';
@@ -137,7 +137,7 @@ void StringRepresentation::visit(FireFront* ff) {
             outputstr << "\t\t\"area\": \"" << fixed << (ff->getArea() / 10000.0) << "ha\"," << endl;
             outputstr << "\t\t\"date\": \"" << SimulationParameters::FormatISODate(t, y, d) << "\"," << endl;
             outputstr << "\t\t\"projection\": \"" 
-                      << SimulationParameters::GetInstance()->getParameter("projection") << "\"," << endl;
+                      << domain->getParameters()->getParameter("projection") << "\"," << endl;
             outputstr << "\t\t\"coordinates\": \"";
             lastLevel = 1;
         }
@@ -319,7 +319,7 @@ void StringRepresentation::postVisitAll(FireDomain* fd) { }
 
 string StringRepresentation::dumpStringRepresentation() {
     // Set dump mode based on simulation parameters.
-    string mode = SimulationParameters::GetInstance()->getParameter("dumpMode");
+    string mode = domain->getParameters()->getParameter("dumpMode");
     if (mode == "json")
         dumpMode = JSON_MODE;
     else if (mode == "ff")

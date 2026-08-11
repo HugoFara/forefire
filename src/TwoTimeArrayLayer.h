@@ -45,7 +45,6 @@ template<typename T> class TwoTimeArrayLayer : public DataLayer<T> {
 
 	FFArray<T>* tmpMatrix; /*! temporary matrix the size of mnh grid */
 
-	SimulationParameters* params;
 
 	
 
@@ -321,7 +320,7 @@ void TwoTimeArrayLayer<T>::dumpAsBinary(string filename, const double& t
 
 /*   If outputs needs to be sync with outputs (no live debug)
     int timeInMillis =  (int)(t*1000);
-	int snapLength = (int)(params->getDouble("outputsUpdate")*1000);
+	int snapLength = (int)(this->params->getDouble("outputsUpdate")*1000);
 
 	if (timeInMillis%snapLength != 0)
 		return;

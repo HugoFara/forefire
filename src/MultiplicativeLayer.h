@@ -39,7 +39,6 @@ template<typename T> class MultiplicativeLayer : public DataLayer<T> {
 	double latestCall; /*!< time of the latest call to getMatrix() */
 
 
-	SimulationParameters* params;
 
 	/*! \brief Interpolation method: lowest order */
 	T getNearestData(FFPoint);
@@ -58,7 +57,6 @@ public:
 
 		latestCall = -1.;
 
-		params = SimulationParameters::GetInstance();
 	};
 	virtual ~MultiplicativeLayer(){
 		delete matrix;

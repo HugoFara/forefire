@@ -31,7 +31,6 @@ template<typename T> class BurningMapLayer : public DataLayer<T> {
 	FFArray<T>* arrivalTimes; /*!< pointer to the array of arrival times */
 
 	double latestCall; /*!< time of the latest call to getMatrix() */
-	SimulationParameters* params;
 
 	/*! \brief interpolation method: lowest order */
 	T getNearestData(FFPoint);
@@ -47,7 +46,6 @@ public:
 		arrivalTimes = new FFArray<T>("BMap", 0., nx, ny);
 		cout<<"creating bmap"<<nx<<" "<<ny<<endl;
 		latestCall = -1.;
-		params = SimulationParameters::GetInstance();
 	};
 	/*! \brief Destructor */
 	virtual ~BurningMapLayer(){

@@ -25,7 +25,7 @@ namespace libforefire
 	 * only after construction. */
 
 	DataBroker::DataBroker(FireDomain *fd)
-		: domain(fd), params(SimulationParameters::GetInstance())
+		: domain(fd), params(fd != 0 ? fd->getParameters() : SimulationParameters::GetInstance())
 	{
 		commonInitialization();
 	}
@@ -309,6 +309,10 @@ namespace libforefire
 			//}
 		}
 
+		// The layer now belongs to this simulation, so it reads this
+		// simulation's configuration rather than the process-wide set.
+		layer->setParams(params);
+
 		layersMap.insert(make_pair(name, layer));
 		layers.push_back(layer);
 
@@ -366,6 +370,7 @@ namespace libforefire
 			fluxLayers.remove(oldlayer);
 			delete oldlayer;
 		}
+		layer->setParams(params);
 		fluxLayersMap.insert(make_pair(name, layer));
 		fluxLayers.push_back(layer);
 		registerLayer(name, layer);

@@ -51,11 +51,11 @@ void MNHInit(const double t){
 
 	/* Reading all the information on the parameters of ForeFire */
 	ostringstream paramsfile;
-	paramsfile<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
-			<<SimulationParameters::GetInstance()->getParameter("ForeFireDataDirectory")<<'/'
-			<<SimulationParameters::GetInstance()->getParameter("paramsFile");
+	paramsfile<<session->params->getParameter("caseDirectory")<<'/'
+			<<session->params->getParameter("ForeFireDataDirectory")<<'/'
+			<<session->params->getParameter("paramsFile");
 
-	mnhPause = SimulationParameters::GetInstance()->getInt("MNHalt");
+	mnhPause = session->params->getInt("MNHalt");
 	ifstream inputParams(paramsfile.str().c_str());
 	if ( inputParams ) {
 		string line;
@@ -71,7 +71,7 @@ void MNHInit(const double t){
 		cout<<'\t'<<"looked in "<<paramsfile.str()<<endl;
 	}
 
-	executor.outputDirs = SimulationParameters::GetInstance()->getParameterArray("atmoOutputDirectories");
+	executor.outputDirs = session->params->getParameterArray("atmoOutputDirectories");
 
 }
 
@@ -87,13 +87,13 @@ void MNHCreateDomain(const int id
 	/* Defining the Fire Domain */
 	if (session->fd) delete session->fd;
 
-	SimulationParameters::GetInstance()->setDouble("atmosphericTimeStep", dt);
-	SimulationParameters::GetInstance()->setDouble("atmosphericCellLength", (meshx[1] - meshx[0]));
-	SimulationParameters::GetInstance()->setDouble("atmosphericCellWidth", (meshy[1] - meshy[0]));
+	session->params->setDouble("atmosphericTimeStep", dt);
+	session->params->setDouble("atmosphericCellLength", (meshx[1] - meshx[0]));
+	session->params->setDouble("atmosphericCellWidth", (meshy[1] - meshy[0]));
 
 
-	SimulationParameters::GetInstance()->setDouble("sumInjected", 0.0);
-	SimulationParameters::GetInstance()->setDouble("sumSedimented", 0.0);
+	session->params->setDouble("sumInjected", 0.0);
+	session->params->setDouble("sumSedimented", 0.0);
 
 	session->fd = new FireDomain(id, year, month, day, t, lat, lon
 			, mdimx, meshx, mdimy, meshy, mdimz, dt);
@@ -168,37 +168,37 @@ void MNHCreateDomain(const int id
 
 	/* Managing the outputs */
 	ostringstream ffOutputsPattern;
-	ffOutputsPattern<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
-			<<SimulationParameters::GetInstance()->getParameter("fireOutputDirectory")<<'/'
-			<<SimulationParameters::GetInstance()->getParameter("outputFiles")
+	ffOutputsPattern<<session->params->getParameter("caseDirectory")<<'/'
+			<<session->params->getParameter("fireOutputDirectory")<<'/'
+			<<session->params->getParameter("outputFiles")
 			<<"."<<session->fd->getDomainID();
-	SimulationParameters::GetInstance()->setParameter("ffOutputsPattern", ffOutputsPattern.str());
+	session->params->setParameter("ffOutputsPattern", ffOutputsPattern.str());
 
 
 
 	session->outStrRep = new StringRepresentation(executor.getDomain());
-	if ( SimulationParameters::GetInstance()->getInt("outputsUpdate") != 0 ){
+	if ( session->params->getInt("outputsUpdate") != 0 ){
 
 		session->tt->insert(new FFEvent(session->outStrRep));
 
-		updateOutputFrequency = SimulationParameters::GetInstance()->getDouble("outputsUpdate");
+		updateOutputFrequency = session->params->getDouble("outputsUpdate");
 		// handle bynary updates
 
 	}
   
 	// Reading all the information on the initialization of ForeFire
 	ostringstream initfile;
-	if ( SimulationParameters::GetInstance()->getInt("parallelInit") != 1 ) {
+	if ( session->params->getInt("parallelInit") != 1 ) {
 		// It is parallel, but Mono-file case: one file for main processor rank 0
-		initfile<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("ForeFireDataDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("InitFile");
+		initfile<<session->params->getParameter("caseDirectory")<<'/'
+								<<session->params->getParameter("ForeFireDataDirectory")<<'/'
+								<<session->params->getParameter("InitFile");
 	} else {
 		// It is parallel, but multidomain file case: one file for each processor
-		initfile<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("ForeFireDataDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("InitFiles")
-								<<"."<<id<<"."<<SimulationParameters::GetInstance()->getParameter("InitTime");
+		initfile<<session->params->getParameter("caseDirectory")<<'/'
+								<<session->params->getParameter("ForeFireDataDirectory")<<'/'
+								<<session->params->getParameter("InitFiles")
+								<<"."<<id<<"."<<session->params->getParameter("InitTime");
 
 	}
 
@@ -214,7 +214,7 @@ void MNHCreateDomain(const int id
 			string line;
 			//size_t numLine = 0;
 			// skip the firest "firedomain" line for // init with multiple files
-			if ( SimulationParameters::GetInstance()->getInt("parallelInit") == 1 ) getline( inputInit, line );
+			if ( session->params->getInt("parallelInit") == 1 ) getline( inputInit, line );
 			while ( getline( inputInit, line ) ) {
 				//numLine++;
 				// checking for comments or newline
@@ -233,9 +233,9 @@ void MNHCreateDomain(const int id
 	}
 	#ifdef MPI_COUPLING
 	ostringstream globalInitFile;
-	globalInitFile<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("ForeFireDataDirectory")<<'/'
-								<<SimulationParameters::GetInstance()->getParameter("GlobalInitFile");
+	globalInitFile<<session->params->getParameter("caseDirectory")<<'/'
+								<<session->params->getParameter("ForeFireDataDirectory")<<'/'
+								<<session->params->getParameter("GlobalInitFile");
 
 	ifstream globalInputInit(globalInitFile.str().c_str());
 			if ( globalInputInit ) {
@@ -286,7 +286,7 @@ void MNHStep(double dt){
 
 	#ifdef MPI_COUPLING
 		size_t sizeofcell = session->fd->getlocalBMapSize();
-		updateBinStreamFrequency = SimulationParameters::GetInstance()->getDouble("updateBinStreamFrequency");
+		updateBinStreamFrequency = session->params->getDouble("updateBinStreamFrequency");
 		MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 		MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
@@ -375,7 +375,7 @@ void MNHStep(double dt){
 				}
 			}
 			bool timeForDump = (std::fmod(session->fdp->getTime(), updateOutputFrequency) < 1e-6);
-			vector<string> optLayers =	SimulationParameters::GetInstance()->getParameterArray("accumulatedDiagnosticScalarLayersNames");
+			vector<string> optLayers =	session->params->getParameterArray("accumulatedDiagnosticScalarLayersNames");
 			for (size_t i = 0; i < optLayers.size(); i++)
 			{
 				DataLayer<double>* myMasterLayer = session->fdp->getDataLayer(optLayers[i]+"Accumulated");
@@ -446,14 +446,14 @@ void MNHStep(double dt){
 	executor.ExecuteCommand(scmd); 
 	
 /*
-mnhPause = SimulationParameters::GetInstance()->getInt("MNHalt");
+mnhPause = session->params->getInt("MNHalt");
 	while (mnhPause>0) {
 		sleep(static_cast<unsigned int>(mnhPause));
-		mnhPause = SimulationParameters::GetInstance()->g/has
+		mnhPause = session->params->g/has
 		etInt("MNHalt");
 		std::cout<<"setParameter[MNHalt=0] to restart, waiting for "<<mnhPause<<std::endl;
 	}
-	SimulationParameters::GetInstance()->setInt("MNHalt",0);
+	session->params->setInt("MNHalt",0);
  */
 	
 	}
@@ -495,24 +495,24 @@ void FFGetDoubleArray(const char* mname, double t
 					    fullMatrix->setDataAtLoc(data_processed.data(),DR->atmoNX+2,DR->atmoNY+2,DR->refNX,DR->refNY,DR->ID);				
 					}
 					if (tmpname == "injectedAtGround"){
-						double atmosphericTimeStep = SimulationParameters::GetInstance()->getDouble("atmosphericTimeStep");
-						double atmoSurf = SimulationParameters::GetInstance()->getDouble("atmosphericCellLength") * SimulationParameters::GetInstance()->getDouble("atmosphericCellWidth");
-						double sumInjected = SimulationParameters::GetInstance()->getDouble("sumInjected");
+						double atmosphericTimeStep = session->params->getDouble("atmosphericTimeStep");
+						double atmoSurf = session->params->getDouble("atmosphericCellLength") * session->params->getDouble("atmosphericCellWidth");
+						double sumInjected = session->params->getDouble("sumInjected");
 
 						
 						sumInjected = sumInjected + ((fullMatrix->sum()) * atmosphericTimeStep );;
-						SimulationParameters::GetInstance()->setDouble("sumInjected", sumInjected);
+						session->params->setDouble("sumInjected", sumInjected);
 
 					}
 
 					if (tmpname == "spotAtGround"){
-						double atmosphericTimeStep = SimulationParameters::GetInstance()->getDouble("atmosphericTimeStep");
-						double atmoSurf = SimulationParameters::GetInstance()->getDouble("atmosphericCellLength") * SimulationParameters::GetInstance()->getDouble("atmosphericCellWidth");
+						double atmosphericTimeStep = session->params->getDouble("atmosphericTimeStep");
+						double atmoSurf = session->params->getDouble("atmosphericCellLength") * session->params->getDouble("atmosphericCellWidth");
 				
-						double sumSedimented = SimulationParameters::GetInstance()->getDouble("sumSedimented");
+						double sumSedimented = session->params->getDouble("sumSedimented");
 						sumSedimented = sumSedimented + ((fullMatrix->sum()) * atmosphericTimeStep );;
 
-						SimulationParameters::GetInstance()->setDouble("sumSedimented", sumSedimented);
+						session->params->setDouble("sumSedimented", sumSedimented);
 
 
 					}
@@ -522,11 +522,11 @@ void FFGetDoubleArray(const char* mname, double t
 					if (std::fmod(t, updateBinStreamFrequency) < 1e-6) {
 
 					 	if(tmpname == "spotAtGround"){
-						//	cout <<"Time: "<< t<< " DT:"<< SimulationParameters::GetInstance()->getDouble("atmosphericTimeStep")<< " sumInjected: " << SimulationParameters::GetInstance()->getDouble("sumInjected") << " sumSedimented: " << SimulationParameters::GetInstance()->getDouble("sumSedimented") << endl;
+						//	cout <<"Time: "<< t<< " DT:"<< session->params->getDouble("atmosphericTimeStep")<< " sumInjected: " << session->params->getDouble("sumInjected") << " sumSedimented: " << session->params->getDouble("sumSedimented") << endl;
 						
-							if (SimulationParameters::GetInstance()->isValued("reignitionThresholdFromSpotting")){
-								double reignitionThreshold = SimulationParameters::GetInstance()->getDouble("reignitionThresholdFromSpotting");
-								double reignitionMaxProbalilityValueFromSpotting = SimulationParameters::GetInstance()->getDouble("reignitionMaxProbalilityValueFromSpotting");
+							if (session->params->isValued("reignitionThresholdFromSpotting")){
+								double reignitionThreshold = session->params->getDouble("reignitionThresholdFromSpotting");
+								double reignitionMaxProbalilityValueFromSpotting = session->params->getDouble("reignitionMaxProbalilityValueFromSpotting");
 								 
 								// --- Re‑ignition logic ---
 								size_t nx = fullMatrix->getDim("x");
@@ -569,10 +569,10 @@ void FFGetDoubleArray(const char* mname, double t
 								// --- End re‑ignition logic ---
 							}
 						}					
-						std::string opath = SimulationParameters::GetInstance()->getParameter("genRawBytesDir");
+						std::string opath = session->params->getParameter("genRawBytesDir");
 						if (opath != "1234567890") {
-							SimulationParameters::GetInstance()->isValued(tmpname+"Range");
-							vector<double> range = SimulationParameters::GetInstance()->getDoubleArray(tmpname+"Range");
+							session->params->isValued(tmpname+"Range");
+							vector<double> range = session->params->getDoubleArray(tmpname+"Range");
 							if (range.size() == 2) {
 								double vmin = range[0];
 								double vmax = range[1];
@@ -630,17 +630,17 @@ void FFPutString(const char* mname, char* str){
 void FFGetString(const char* mname, const char* str){
 	string name(mname);
 	string val(str);
-	SimulationParameters::GetInstance()->setParameter(name, val);
+	session->params->setParameter(name, val);
 }
 
 void FFPutInt(const char* mname, int* n){
 	string name(mname);
-	*n = SimulationParameters::GetInstance()->getInt(name);
+	*n = session->params->getInt(name);
 }
 
 void FFGetInt(const char* mname, int* n){
 	string name(mname);
-	SimulationParameters::GetInstance()->setInt(name, *n);
+	session->params->setInt(name, *n);
 }
 
 void FFPutIntArray(const char* mname, int* x,
@@ -655,12 +655,12 @@ void FFGetIntArray(const char* mname, double time
 
 void FFPutDouble(const char* mname, double* x){
 	string name(mname);
-	*x = SimulationParameters::GetInstance()->getDouble(name);
+	*x = session->params->getDouble(name);
 }
 
 void FFGetDouble(const char* mname, double* x){
 	string name(mname); 
-	SimulationParameters::GetInstance()->setDouble(name, *x);
+	session->params->setDouble(name, *x);
 }
 
 void FFPutDoubleArray(const char* mname, double* x,
@@ -675,7 +675,7 @@ void FFPutDoubleArray(const char* mname, double* x,
 
 	if ( myLayer ){
 	/*
-	   int mprank = SimulationParameters::GetInstance()->getInt("mpirank");
+	   int mprank = session->params->getInt("mpirank");
 	if (mprank ==1 ){
 		    cout<<mprank<<" foundlayer "<<tmpname<<endl;
 		}*/
@@ -703,9 +703,9 @@ void FFDumpDoubleArray(size_t nmodel, size_t nip, const char* mname, double t
 	string tmpname(mname);
 	ostringstream outputfile;
 	double ct = executor.refTime + t;
-	outputfile<<SimulationParameters::GetInstance()->getParameter("caseDirectory")<<'/'
+	outputfile<<session->params->getParameter("caseDirectory")<<'/'
 			<<executor.outputDirs[nmodel-1]<<'/'
-			<<SimulationParameters::GetInstance()->getParameter("outputFiles")
+			<<session->params->getParameter("outputFiles")
 			<<"."<<nip<<"."<<tmpname;
 
 	size_t niC = (size_t)(ni+0);

@@ -26,7 +26,7 @@ void PLibForeFire::createDomain( int id
 		if (session->fd) delete session->fd;
 
 		session->fd = new FireDomain(id, year, month, day, t, lat, lon
-				, mdimx, meshx, mdimy, meshy, mdimz, dt);
+				, mdimx, meshx, mdimy, meshy, mdimz, dt, session->params);
 
 		// pyxecutor->getDomain() = session->fd; // FIXME
 
@@ -44,7 +44,7 @@ void PLibForeFire::createDomain( int id
 
 
 		session->outStrRep = new StringRepresentation(pyxecutor->getDomain());
-		if ( SimulationParameters::GetInstance()->getInt("outputsUpdate") != 0 ){
+		if ( params->getInt("outputsUpdate") != 0 ){
 			session->tt->insert(new FFEvent(session->outStrRep));
 		}
 

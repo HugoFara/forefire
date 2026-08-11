@@ -78,7 +78,6 @@ template<typename T> class FluxLayer : public DataLayer<T> {
 	};
 	std::vector<Emission> emissions;
 
-	SimulationParameters* params;
 
 	/*! \brief obtains the position in the array for given location and time */
 	size_t getPosInMap(FFPoint&, const double&);
@@ -120,7 +119,6 @@ public:
 
 		latestCallGetMatrix = -1.;
 
-		params = SimulationParameters::GetInstance();
 	}
 	/*! \brief Constructor with all necessary information */
 	FluxLayer(string name, FFPoint& atmoSWCorner, FFPoint& atmoNECorner
@@ -154,7 +152,6 @@ public:
 
 		latestCallGetMatrix = -1.;
 
-		params = SimulationParameters::GetInstance();
 	};
 	/*! \brief Destructor */
 	virtual ~FluxLayer(){
@@ -349,7 +346,7 @@ void FluxLayer<T>::addEmission(const FFPoint& center, double area, double startT
 
 template<typename T>
 void FluxLayer<T>::getMatrix(FFArray<T>** matrix, const double& t){
-	int domID = params->getInt("mpirank");
+	int domID = this->params->getInt("mpirank");
 
 
 	if ( t != latestCallGetMatrix ){
@@ -381,11 +378,11 @@ void FluxLayer<T>::getMatrix(FFArray<T>** matrix, const double& t){
 	}
 	// Affecting the computed matrix to the desired array
 	*matrix = flux;
-	if ( params->getInt("surfaceOutputs") != 0 ) {
+	if ( this->params->getInt("surfaceOutputs") != 0 ) {
 		// dumping in a binary file for output
 		FFPoint plotOrigin = FFPoint();
 		ostringstream oss;
-		oss<<params->getParameter("ffOutputsPattern");
+		oss<<this->params->getParameter("ffOutputsPattern");
 		dumpAsBinary(oss.str(), t, plotOrigin, plotOrigin, nx, ny);
 	}
 }

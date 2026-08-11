@@ -13,7 +13,10 @@ namespace libforefire {
 
 ForeFireModel::ForeFireModel(const int & mindex, DataBroker* db)
 : dataBroker(db), index(mindex) {
-	params = SimulationParameters::GetInstance();
+	// The parameters of the simulation this model runs in, not the
+	// process-wide set.
+	params = dataBroker != 0 ? dataBroker->getParameters()
+							 : SimulationParameters::GetInstance();
 	numProperties = 0;
 	numFuelProperties = 0;
 	fuelPropertiesTable = 0;

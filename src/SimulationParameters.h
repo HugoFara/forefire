@@ -31,8 +31,6 @@ class SimulationParameters {
 	/*! list of parameters which value should not be modified */
 	list<string> protectedParameters;
 
-	SimulationParameters();
-
 	SimulationParameters( const SimulationParameters & );
 	SimulationParameters & operator =( const SimulationParameters & );
 
@@ -42,6 +40,13 @@ class SimulationParameters {
 	void tokenizeToSize(const string&, vector<size_t>&, const string&);
 
 public:
+
+	/*! \brief builds a parameter set loaded with the defaults
+	 *
+	 * Public so that each simulation can own one. The accessors used to work
+	 * on GetInstance() rather than on 'this', which made every instance an
+	 * alias of the singleton; they operate on their own map now. */
+	SimulationParameters();
 
 	virtual ~SimulationParameters();
 
@@ -61,6 +66,10 @@ public:
 	vector<int> getIntArray(string);
 	vector<size_t> getSizeArray(string);
 
+	/*! \brief the process-wide parameter set
+	 *
+	 * Kept for the C API and as the default for code that has no simulation
+	 * to hand. Simulations own their own set instead. */
 	static SimulationParameters* GetInstance();
     
     /*! returns an ISO date string from secs, year and day of the year */
@@ -73,7 +82,7 @@ public:
     static double SecsBetween(double t1, int y1, int yday1, double t2, int y2, int yday2);
     
     /*! returns the correct absolute path from a relative or absolute path */
-    static string GetPath(string arg);
+    string GetPath(string arg);
 
 	static std::vector<double> UTM2lonlat(double x, double y, int utmzone, bool isNorth) ;
 	static std::vector<double> lonlat2UTM(double lon, double lat, int utmzone, bool isNorth) ;

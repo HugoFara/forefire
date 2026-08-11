@@ -154,7 +154,7 @@ string SimulationParameters::GetPath(string arg)
     // If  caseDirectory = /home/svn/web/apiDEV/out  AND  ForeFireDataDirectory = 2012-05-03
     // Then  ../../../layers => /home/svn/web/apiDEV/out/2012-05-03/../../../layers
     // And so understood as  /home/svn/web/layers
-    return GetInstance()->getParameter("caseDirectory") + '/' + GetInstance()->getParameter("ForeFireDataDirectory") + '/' + arg;
+    return getParameter("caseDirectory") + '/' + getParameter("ForeFireDataDirectory") + '/' + arg;
 }
 
 SimulationParameters::SimulationParameters(){
@@ -446,13 +446,13 @@ vector<string> SimulationParameters::getAllKeys() {
 void SimulationParameters::setParameter(string key, string value, bool protect){
 	//cout<<"setting "<<key<<" to "<<value<<endl;
 	list<string>::iterator protection
-		= find(GetInstance()->protectedParameters.begin(), GetInstance()->protectedParameters.end(), key);
+		= find(protectedParameters.begin(), protectedParameters.end(), key);
 	if ( protection == protectedParameters.end() ){
-		map<string, string>::iterator param = GetInstance()->parameters.find(key);
-		if ( param != GetInstance()->parameters.end() ) GetInstance()->parameters.erase(key);
-		GetInstance()->parameters.insert(make_pair(key, value));
+		map<string, string>::iterator param = parameters.find(key);
+		if ( param != parameters.end() ) parameters.erase(key);
+		parameters.insert(make_pair(key, value));
 	}
-	if ( protect ) GetInstance()->protectedParameters.push_back(key);
+	if ( protect ) protectedParameters.push_back(key);
 }
 
 void SimulationParameters::setDouble(string key, double value){
@@ -474,21 +474,21 @@ void SimulationParameters::setSize(string key, size_t value){
 }
 
 bool SimulationParameters::isValued(string key){
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() and param->second != undefined ) return true;
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() and param->second != undefined ) return true;
 	return false;
 }
 
 string SimulationParameters::getParameter(string key){
 
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) return param->second;
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) return param->second;
 	return undefined;
 }
 
 double SimulationParameters::getDouble(string key){
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) {
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) {
 		double val;
 		istringstream iss(param->second);
 		if ( iss >> val ) return val;
@@ -497,8 +497,8 @@ double SimulationParameters::getDouble(string key){
 }
 
 int SimulationParameters::getInt(string key){
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) {
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) {
 		istringstream iss(param->second);
 		int val;
 		if ( iss >> val ) return val;
@@ -507,8 +507,8 @@ int SimulationParameters::getInt(string key){
 }
 
 size_t SimulationParameters::getSize(string key){
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) {
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) {
 		istringstream iss(param->second);
 		size_t val;
 		if ( iss >> val ) return val;
@@ -518,29 +518,29 @@ size_t SimulationParameters::getSize(string key){
 
 vector<string> SimulationParameters::getParameterArray(string key){
 	vector<string> vals;
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) tokenizeToString(param->second, vals, ",");
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) tokenizeToString(param->second, vals, ",");
 	return vals;
 }
 
 vector<double> SimulationParameters::getDoubleArray(string key){
 	vector<double> vals;
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) tokenizeToDouble(param->second, vals, ",");
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) tokenizeToDouble(param->second, vals, ",");
 	return vals;
 }
 
 vector<int> SimulationParameters::getIntArray(string key){
 	vector<int> vals;
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) tokenizeToInt(param->second, vals, ",");
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) tokenizeToInt(param->second, vals, ",");
 	return vals;
 }
 
 vector<size_t> SimulationParameters::getSizeArray(string key){
 	vector<size_t> vals;
-	map<string, string>::iterator param = GetInstance()->parameters.find(key);
-	if ( param != GetInstance()->parameters.end() ) tokenizeToSize(param->second, vals, ",");
+	map<string, string>::iterator param = parameters.find(key);
+	if ( param != parameters.end() ) tokenizeToSize(param->second, vals, ",");
 	return vals;
 }
 

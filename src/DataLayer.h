@@ -28,7 +28,20 @@ template<typename T> class DataLayer {
 
 	string key; /*!< key to the data layer */
 
+protected:
+	/*! \brief parameters of the simulation this layer belongs to
+	 *
+	 * Each derived layer used to hold its own copy and fill it from the
+	 * process-wide set, so a layer read the configuration of whichever
+	 * simulation happened to write last. DataBroker sets it when the layer is
+	 * registered; layers only read it in their output paths, well after that.
+	 */
+	SimulationParameters* params = 0;
+
 public:
+	/*! \brief called by DataBroker when the layer joins a simulation */
+	void setParams(SimulationParameters* p){ params = p; }
+
 	/*! \brief Default constructor */
 	DataLayer(){};
 	/*! \brief Constructor with key */
