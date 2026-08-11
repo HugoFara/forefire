@@ -7,6 +7,7 @@
  */
 
 #include "Command.h"
+#include "NetCDFLock.h"
 #include "colormap.h"
 #include <sstream>
 #include <dirent.h>
@@ -83,6 +84,7 @@ namespace libforefire
 
     int Command::createDomain(const string &arg, size_t &numTabs)
     {
+        FOREFIRE_NETCDF_LOCK();
 
         size_t n = argCount(arg);
         if (n == 2)
@@ -2487,6 +2489,7 @@ namespace libforefire
 
     int Command::saveData(const std::string &arg, size_t &numTabs)
     {
+        FOREFIRE_NETCDF_LOCK();
         // Check for an argument
         if (arg.empty())
         {
@@ -2821,6 +2824,7 @@ namespace libforefire
 
     int Command::loadData(const string &arg, size_t &numTabs)
     {
+        FOREFIRE_NETCDF_LOCK();
 
         if (arg.size() == 0)
         {
@@ -3666,6 +3670,7 @@ namespace libforefire
 
     void Command::writeNetCDF(const char *filename, const string &varName, const std::vector<std::vector<double>> &matrix, const vector<double> &latitudes, const vector<double> &longitudes)
     {
+        FOREFIRE_NETCDF_LOCK();
         try
         {
             // Create (or replace) the NetCDF file using NetCDF-4 mode.

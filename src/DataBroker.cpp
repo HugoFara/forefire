@@ -9,6 +9,7 @@
 #include "DataBroker.h"
 #include "MultiplicativeLayer.h"
 #include "FireDomain.h"
+#include "NetCDFLock.h"
 
 namespace libforefire
 {
@@ -1062,6 +1063,7 @@ namespace libforefire
 
 	void DataBroker::loadFromNCFile(std::string filename)
 	{
+		FOREFIRE_NETCDF_LOCK();
 		if(filename.empty())
 		{
 			return;
@@ -1364,6 +1366,7 @@ namespace libforefire
 	XYZTDataLayer<double> *DataBroker::constructXYZTLayer(NcVar &values, FFPoint &SWCorner, FFPoint &spatialExtent,
 														  double timeOrigin, double Lt, int dimTSelected /* = -1 */)
 	{
+		FOREFIRE_NETCDF_LOCK();
 		size_t nx = 0, ny = 0, nz = 0, nt = 0;
 		switch (values.getDimCount())
 		{
@@ -1416,6 +1419,7 @@ namespace libforefire
 	FuelDataLayer<double> *DataBroker::constructFuelLayer(NcVar &values, FFPoint &SWCorner, FFPoint &spatialExtent,
 														  double timeOrigin, double Lt, int dimTSelected)
 	{
+		FOREFIRE_NETCDF_LOCK();
 
 		size_t nx = 0, ny = 0, nz = 0, nt = 0;
 		switch (values.getDimCount())
@@ -1457,6 +1461,7 @@ namespace libforefire
 	FluxLayer<double> *DataBroker::constructFluxLayer(NcVar &values, FFPoint &SWCorner, FFPoint &spatialExtent,
 													  double timeOrigin, double Lt, int dimTSelected /* = -1 */)
 	{
+		FOREFIRE_NETCDF_LOCK();
 
 		/* Sending the information on the models to the domain */
 		/*-----------------------------------------------------*/
@@ -1539,6 +1544,7 @@ namespace libforefire
 
 	int *DataBroker::readAndTransposeIntFortranProjectedField(NcVar *val, const size_t &nt, const size_t &nz, const size_t &ny, const size_t &nx, bool transpose, int selectedT)
 	{
+		FOREFIRE_NETCDF_LOCK();
 		size_t nnt = nt;
 		size_t SelectedTdim = (selectedT < 0 ? 0 : selectedT);
 		if (selectedT > -1)
@@ -1589,6 +1595,7 @@ namespace libforefire
 
 	double *DataBroker::readAndTransposeFortranProjectedField(NcVar *val, const size_t &nt, const size_t &nz, const size_t &ny, const size_t &nx, bool transpose, int selectedT)
 	{
+		FOREFIRE_NETCDF_LOCK();
 		size_t nnt = nt;
 		size_t SelectedTdim = (selectedT < 0 ? 0 : selectedT);
 		if (selectedT > -1)

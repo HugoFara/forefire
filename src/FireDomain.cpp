@@ -7,6 +7,7 @@
  */
 
  #include "FireDomain.h"
+#include "NetCDFLock.h"
  #include "BurningMapLayer.h"
  
  #include <sys/stat.h>
@@ -3441,6 +3442,7 @@
  
  
 	 void FireDomain::loadArrivalTimeNC(string fname){
+		FOREFIRE_NETCDF_LOCK();
 			 if (getDomainID()!=0) return;
  
 				 try
@@ -3519,6 +3521,7 @@
 		 }
  
    void FireDomain::saveArrivalTimeNC(){
+		FOREFIRE_NETCDF_LOCK();
 	 
 	try {
 		 // Setup file paths and identifiers
