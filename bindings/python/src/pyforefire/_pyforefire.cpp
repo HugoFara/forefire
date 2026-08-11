@@ -249,7 +249,18 @@ py::array_t<double> PLibForeFire::getDoubleArray(char* name, double t){
 		return arr;
 }
 
-PYBIND11_MODULE(_pyforefire, m) {
+// py::mod_gil_not_used() tells a free-threaded CPython that this module does
+// not need the GIL. Without it the interpreter turns the GIL back on as the
+// module is imported, with a RuntimeWarning, and every simulation in the
+// process is serialised again.
+//
+// Each ForeFire object owns its simulation: its interpreter, parameters,
+// domain, data broker, layers and recycling pools are all per-instance. What
+// is still shared is guarded: the atom id counter is atomic, and NetCDF and
+// HDF5 are called under one lock because neither library is thread-safe.
+//
+// Sharing a single ForeFire object between threads is still not supported.
+PYBIND11_MODULE(_pyforefire, m, py::mod_gil_not_used()) {
     m.doc() = "pybind11 pyforefire plugin"; // optional module docstring
 
     py::class_<PLibForeFire>(m, "ForeFire")
