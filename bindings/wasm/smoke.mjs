@@ -8,7 +8,8 @@
  *   node bindings/wasm/smoke.mjs path/to/forefire.mjs
  */
 
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 
 const modulePath = process.argv[2];
 if (!modulePath) {
@@ -16,9 +17,10 @@ if (!modulePath) {
   process.exit(2);
 }
 
-const { default: createForeFire } = await import(
-  modulePath.startsWith("/") ? modulePath : fileURLToPath(new URL(modulePath, import.meta.url))
-);
+// Resolved against the working directory, the way a path typed on a command
+// line is meant to be — not against this file, which would send
+// `bin/forefire.mjs` looking inside bindings/wasm/.
+const { default: createForeFire } = await import(pathToFileURL(resolve(modulePath)).href);
 
 const Module = await createForeFire();
 console.log("ForeFire version:", Module.version());

@@ -3,8 +3,15 @@
 Spike for [issue #171](https://github.com/forefireAPI/forefire/issues/171): compile
 the engine to WebAssembly and run a simulation in a browser tab.
 
+**Live demo: https://hugofara.github.io/forefire/**
+
 This is an experiment, not a supported build. It exists to answer the three
 questions the issue left open — does it link, does it run, how big is it.
+
+`.github/workflows/wasm-pages.yml` builds the module on every push to
+`feat/wasm` and publishes the demo. The `.wasm` is built in CI rather than
+committed: it is a megabyte of generated output, and a stale binary sitting
+next to live sources is worse than a two minute build.
 
 ## What made it possible
 
