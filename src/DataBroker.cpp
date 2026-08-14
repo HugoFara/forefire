@@ -1061,6 +1061,19 @@ namespace libforefire
 		}
 	}
 
+#ifdef FF_NO_NETCDF
+
+	void DataBroker::loadFromNCFile(std::string filename)
+	{
+		// The empty-filename early return matches the NetCDF path: the command
+		// layer calls this with no file on every session setup.
+		if (filename.empty()) return;
+		cout << "loadFromNCFile: this build has no NetCDF support, ignoring "
+			 << filename << endl;
+	}
+
+#else
+
 	void DataBroker::loadFromNCFile(std::string filename)
 	{
 		FOREFIRE_NETCDF_LOCK();
@@ -1643,5 +1656,7 @@ namespace libforefire
 		delete[] tmp;
 		return data;
 	}
+
+#endif /* FF_NO_NETCDF */
 
 }

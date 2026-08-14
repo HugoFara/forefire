@@ -41,7 +41,27 @@ else()
     set(_ff_default_lfs ON)
 endif()
 
+# Emscripten has no NetCDF and no reason for one: a browser build reads its
+# data from JS typed arrays. Detecting it here rather than making the caller
+# pass the flags keeps `emcmake cmake` a one-liner.
+if(EMSCRIPTEN)
+    set(_ff_default_mpi OFF)
+    set(_ff_default_native OFF)
+    set(_ff_default_python OFF)
+    set(_ff_default_static ON)
+    set(_ff_default_tools OFF)
+    set(_ff_default_lfs OFF)
+    set(_ff_default_netcdf OFF)
+    set(_ff_default_cli OFF)
+else()
+    set(_ff_default_netcdf ON)
+    set(_ff_default_cli ON)
+endif()
+
 option(FOREFIRE_ENABLE_MPI "Enable MPI coupling when MPI is available" ${_ff_default_mpi})
+option(FOREFIRE_ENABLE_NETCDF "Build the NetCDF-backed I/O paths" ${_ff_default_netcdf})
+option(FOREFIRE_BUILD_CLI "Build the interactive forefire command line shell" ${_ff_default_cli})
+option(FOREFIRE_BUILD_WASM "Build the Emscripten/embind module" ${EMSCRIPTEN})
 option(FOREFIRE_NATIVE_ARCH "Optimise for the build machine's CPU (-march=native)" ${_ff_default_native})
 option(FOREFIRE_BUILD_PYTHON "Build the pyforefire Python extension module" ${_ff_default_python})
 option(FOREFIRE_STATIC_CORE "Build the ForeFire core as a static library" ${_ff_default_static})
@@ -130,7 +150,10 @@ endif()
 # detection logic below lives in exactly one place.
 add_library(forefire_netcdf INTERFACE)
 
-if(DEFINED ENV{SRC_MESONH} AND DEFINED ENV{XYZ} AND DEFINED ENV{FF_STATIC})
+if(NOT FOREFIRE_ENABLE_NETCDF)
+    message(STATUS "NetCDF support disabled (FOREFIRE_ENABLE_NETCDF=OFF)")
+    target_compile_definitions(forefire_netcdf INTERFACE FF_NO_NETCDF)
+elseif(DEFINED ENV{SRC_MESONH} AND DEFINED ENV{XYZ} AND DEFINED ENV{FF_STATIC})
     message(STATUS "MESONH and XYZ environment variables are set. FF_STATIC too, static NetCDF.")
     set(MESONH $ENV{SRC_MESONH})
     set(XYZ $ENV{XYZ})
@@ -222,6 +245,12 @@ else()
     endif()
 endif()
 
+if(EMSCRIPTEN)
+    # Emscripten defaults to -fno-exceptions; the command parser signals bad
+    # input by throwing, so every translation unit needs them enabled.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions")
+endif()
+
 # ----------------------------------
 # Output Directories
 # ----------------------------------
@@ -274,8 +303,50 @@ endif()
 # ----------------------------------
 # Main Project Executable
 # ----------------------------------
-add_executable(forefire app/forefire/ForeFire.cpp app/forefire/AdvancedLineEditor.cpp)
-target_link_libraries(forefire PRIVATE forefireL)
+# The shell is termios-driven and has no meaning in a browser, so a WASM build
+# skips it and ships the embind module below instead.
+if(FOREFIRE_BUILD_CLI)
+    add_executable(forefire app/forefire/ForeFire.cpp app/forefire/AdvancedLineEditor.cpp)
+    target_link_libraries(forefire PRIVATE forefireL)
+endif()
+
+# ----------------------------------
+# WebAssembly Module
+# ----------------------------------
+if(FOREFIRE_BUILD_WASM)
+    add_executable(forefire_wasm bindings/wasm/forefire_wasm.cpp)
+    target_link_libraries(forefire_wasm PRIVATE forefireL)
+    # Two things are non-obvious here. embind refuses to compile below C++17,
+    # so this one translation unit moves up while the core stays on C++11 —
+    # both sit on the same libc++. And the output is an ES module, which Node
+    # only recognises from a .js file when a package.json says so, hence .mjs.
+    set_target_properties(forefire_wasm PROPERTIES
+        OUTPUT_NAME "forefire"
+        SUFFIX ".mjs"
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON)
+    target_link_options(forefire_wasm PRIVATE
+        "--bind"
+        # A single ES module plus its .wasm, so a static page can import it.
+        "-sMODULARIZE=1"
+        "-sEXPORT_ES6=1"
+        "-sEXPORT_NAME=createForeFire"
+        "-sENVIRONMENT=web,worker,node"
+        # The domain allocates its grids up front and can grow well past the
+        # 16 MB default; the fire domain sizes are not known at build time.
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sINITIAL_MEMORY=64MB"
+        "-sSTACK_SIZE=4MB"
+        # C++ exceptions are load-bearing here: BadOption and friends are how
+        # the command parser reports bad input.
+        "-fexceptions"
+        # There is no main(): the module is driven entirely through embind.
+        # FS stays exported so callers can stage fuels.csv and read back what
+        # print[<file>] writes.
+        "-sEXPORTED_RUNTIME_METHODS=['FS']"
+        "-sFORCE_FILESYSTEM=1")
+    target_compile_options(forefire_wasm PRIVATE "-fexceptions")
+endif()
 
 # ----------------------------------
 # Python Extension Module
@@ -319,7 +390,9 @@ if(NOT _ff_wheel_build)
     set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")  # Adjust as necessary
 
     # Specify installation directories
-    install(TARGETS forefire RUNTIME DESTINATION bin)
+    if(FOREFIRE_BUILD_CLI)
+        install(TARGETS forefire RUNTIME DESTINATION bin)
+    endif()
     if(NOT FOREFIRE_STATIC_CORE)
         # With a static core there is no libforefireL to install: it is linked
         # straight into the executables.

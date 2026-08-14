@@ -1,0 +1,152 @@
+<!doctype html>
+<!--
+  Static-page demo for the WebAssembly build (issue #171). No server-side
+  ForeFire, no NetCDF, no listenHTTP: the engine runs in the tab.
+
+  Copy forefire.mjs and forefire.wasm next to this file and serve the directory
+  over http (a file:// page cannot fetch the .wasm), e.g.
+
+      python3 -m http.server -d bin
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ForeFire in the browser</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 46rem;
+        padding: 0 1rem;
+      }
+      canvas {
+        border: 1px solid #999;
+        width: 100%;
+        max-width: 520px;
+        aspect-ratio: 1;
+        background: #111;
+      }
+      button {
+        font: inherit;
+        padding: 0.4rem 0.9rem;
+      }
+      #log {
+        white-space: pre-wrap;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        color: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ForeFire in the browser</h1>
+    <p>
+      A 4 km square domain with a uniform fuel map and a turning wind, driven
+      from JavaScript typed arrays. Everything below runs in this tab.
+    </p>
+    <p><button id="run" disabled>Loading engine…</button></p>
+    <canvas id="view" width="520" height="520"></canvas>
+    <p id="log"></p>
+
+    <script type="module">
+      import createForeFire from "./forefire.mjs";
+
+      const L = 4000;
+      const STEPS = 15;
+      const canvas = document.getElementById("view");
+      const ctx = canvas.getContext("2d");
+      const log = document.getElementById("log");
+      const button = document.getElementById("run");
+
+      const Module = await createForeFire();
+      log.textContent = `ForeFire ${Module.version()} ready`;
+      button.disabled = false;
+
+      function parseFront(text) {
+        return [...text.matchAll(/loc=\(([-\d.eE+]+),([-\d.eE+]+),/g)].map((m) => [
+          parseFloat(m[1]),
+          parseFloat(m[2]),
+        ]);
+      }
+
+      function draw(fronts) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const s = canvas.width / L;
+        fronts.forEach((nodes, i) => {
+          if (nodes.length === 0) return;
+          // Older fronts fade out, so the sequence reads as a progression.
+          ctx.strokeStyle = `hsl(${20 + i * 3} 90% ${40 + (i / fronts.length) * 30}%)`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          nodes.forEach(([x, y], j) => {
+            // Canvas y grows downward; the domain's grows upward.
+            const px = x * s;
+            const py = canvas.height - y * s;
+            j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          });
+          ctx.closePath();
+          ctx.stroke();
+        });
+      }
+
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        const ff = new Module.ForeFire();
+
+        ff.setString("fuelsTable", "Index;vv_coeff;Kcurv;beta\n1;1.0;1.0;1.0");
+        ff.setDouble("defaultFuelType", 1);
+        for (const [k, v] of Object.entries({
+          spatialIncrement: 0.5,
+          minimalPropagativeFrontDepth: 10,
+          perimeterResolution: 10,
+          initialFrontDepth: 0.1,
+          relax: 1,
+          smoothing: 0,
+          minSpeed: 0,
+          bmapLayer: 1,
+          windReductionFactor: 1,
+        }))
+          ff.setDouble(k, v);
+        ff.setString("propagationModel", "WindDriven");
+
+        ff.execute(`FireDomain[sw=(0,0,0);ne=(${L},${L},0);t=0]`);
+
+        const W = 200;
+        const H = 200;
+        const fuel = new Int32Array(W * H).fill(1);
+        const windU = new Float64Array(2 * W * H);
+        windU.fill(1, 0, W * H);
+        const windV = new Float64Array(2 * W * H);
+        windV.fill(1, W * H);
+
+        ff.addLayer("propagation", "WindDriven", "propagationModel");
+        ff.addIndexLayer("table", "fuel", 0, 0, 0, L, L, 0, H, W, 1, 1, fuel);
+        ff.addScalarLayer("windScalDir", "windU", 0, 0, 0, L, L, 0, H, W, 2, 1, windU);
+        ff.addScalarLayer("windScalDir", "windV", 0, 0, 0, L, L, 0, H, W, 2, 1, windV);
+
+        ff.execute("startFire[loc=(2000,1200,0.);t=0]");
+
+        const fronts = [];
+        const started = performance.now();
+        for (let i = 0; i <= STEPS; i++) {
+          const angle = (i * 24 * Math.PI) / 180;
+          ff.execute(
+            `trigger[wind;loc=(0.,0.,0.);vel=(${(20 * Math.cos(angle)).toFixed(3)},` +
+              `${(20 * Math.sin(angle)).toFixed(3)},0)]`
+          );
+          ff.execute("step[dt=20]");
+          fronts.push(parseFront(ff.execute("print[]")));
+        }
+        const elapsed = performance.now() - started;
+
+        draw(fronts);
+        const last = fronts[fronts.length - 1];
+        log.textContent =
+          `${STEPS} steps of 20 s in ${elapsed.toFixed(0)} ms — ` +
+          `${last.length} front nodes at t = ${ff.getTime()} s`;
+        button.disabled = false;
+      });
+    </script>
+  </body>
+</html>
