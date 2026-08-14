@@ -97,9 +97,17 @@ console.log(
     `y range: ${Math.min(...ys).toFixed(0)}..${Math.max(...ys).toFixed(0)}`
 );
 
-const spread = Math.max(...xs) - Math.min(...xs);
-if (spread < 100) {
-  console.error(`front barely moved (x spread ${spread.toFixed(1)} m); expected hundreds of metres`);
+// The wind blows along +x at 8 m/s for 240 s, so the front should be stretched
+// well downwind and only modestly across it. Checking both axes catches a
+// transposed layer, which otherwise looks like a perfectly healthy fire that
+// happens to run at ninety degrees to the wind.
+const spreadX = Math.max(...xs) - Math.min(...xs);
+const spreadY = Math.max(...ys) - Math.min(...ys);
+if (spreadX < 1000 || spreadX < 2 * spreadY) {
+  console.error(
+    `front did not run downwind: x spread ${spreadX.toFixed(0)} m, ` +
+      `y spread ${spreadY.toFixed(0)} m`
+  );
   process.exit(1);
 }
 console.log("\nOK");

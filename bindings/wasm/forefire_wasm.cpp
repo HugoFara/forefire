@@ -38,6 +38,31 @@ std::vector<T> toVector(const emscripten::val &array) {
 	return out;
 }
 
+/*! \brief Transpose a (t,z,y,x) C-order buffer into the x-major order the data
+ *         layers index with.
+ *
+ *  XYZTDataLayer and FuelDataLayer read their values as
+ *  `x*(ny*nz*nt) + y*(nz*nt) + z*nt + t`, not as the row-major layout a caller
+ *  naturally builds. The pybind11 binding does this same shuffle before
+ *  handing NumPy data over; skipping it silently transposes the field, which
+ *  for a two-plane wind layer swaps the u and v responses and sends the fire
+ *  off at ninety degrees to the wind.
+ */
+template <typename T>
+std::vector<T> toLayerOrder(const std::vector<T> &src, size_t nx, size_t ny,
+							size_t nz, size_t nt) {
+	std::vector<T> out(src.size());
+	for (size_t it = 0; it < nt; ++it)
+		for (size_t iz = 0; iz < nz; ++iz)
+			for (size_t iy = 0; iy < ny; ++iy)
+				for (size_t ix = 0; ix < nx; ++ix) {
+					const size_t from = ix + nx * (iy + ny * (iz + nz * it));
+					const size_t to = ix * (ny * nz * nt) + iy * (nz * nt) + iz * nt + it;
+					out[to] = src[from];
+				}
+	return out;
+}
+
 class ForeFireWasm {
 	Command executor;
 
@@ -98,6 +123,7 @@ public:
 		std::vector<double> data = toVector<double>(values);
 		size_t nnx = nx, nny = ny, nnz = nz, nnt = nt;
 		if (data.size() != nnx * nny * nnz * nnt) return false;
+		data = toLayerOrder(data, nnx, nny, nnz, nnt);
 		// addScalarLayer keeps the pointer, so the layer needs storage that
 		// outlives this call; the domain owns it from here on.
 		double *owned = new double[data.size()];
@@ -117,6 +143,7 @@ public:
 		std::vector<int> data = toVector<int>(values);
 		size_t nnx = nx, nny = ny, nnz = nz, nnt = nt;
 		if (data.size() != nnx * nny * nnz * nnt) return false;
+		data = toLayerOrder(data, nnx, nny, nnz, nnt);
 		int *owned = new int[data.size()];
 		std::copy(data.begin(), data.end(), owned);
 		return domain->addIndexLayer(type, name, x0, y0, t0, width, height,

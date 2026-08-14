@@ -88,8 +88,11 @@ const front = ff.execute("print[]");
 ```
 
 The layer methods take the four dimensions explicitly — `nx, ny, nz, nt` — where
-the NumPy binding reads them off the array's shape. The flattening is the same
-C-order the NumPy path uses: `index = x + nx * (y + ny * (z + nz * t))`.
+the NumPy binding reads them off the array's shape. Otherwise the contract is
+identical: pass a flat C-order `(t, z, y, x)` array, indexed
+`x + nx * (y + ny * (z + nz * t))`, exactly as `numpy.ndarray.ravel()` would
+give you. The binding transposes it into the x-major order the data layers
+index with, the same shuffle `_pyforefire.cpp` performs.
 
 ## What was measured
 
@@ -98,9 +101,10 @@ C-order the NumPy path uses: `index = x + nx * (y + ny * (z + nz * t))`.
   `-Wvla-cxx-extension` warnings, the latent portability issue the issue
   already flags.
 - **It links and runs.** `smoke.mjs` runs a full 240 s simulation.
-- **The answers match a native build.** The same scenario compiled natively
-  against `libforefireL` gives the identical front — 308 nodes, x 1980..2280,
-  y 1980..3835.
+- **The answers match the Python binding.** `smoke.mjs` is a line-for-line port
+  of the worked example in the NumPy documentation. Run against a native
+  `pyforefire` built from the same tree, the two agree exactly: 349 front nodes,
+  x 1980..3905, y 1763..2308, the front stretched downwind as the doc describes.
 - **Speed.** The turning-wind demo runs 15 steps of 20 s over a 4 km domain in
   about 1.2 s under Node.
 
