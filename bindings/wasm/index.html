@@ -1,11 +1,13 @@
 <!doctype html>
 <!--
-  Static-page demo for the WebAssembly build (issue #171). No server-side
-  ForeFire, no NetCDF, no listenHTTP: the engine runs in the tab.
+  Live browser demo for the WebAssembly build (issue #171). No server-side
+  ForeFire, no NetCDF, no listenHTTP: the engine runs in this tab, in a worker.
 
-  Copy forefire.mjs and forefire.wasm next to this file and serve the directory
-  over http (a file:// page cannot fetch the .wasm), e.g.
+  Copy forefire.mjs, forefire.wasm and worker.mjs next to this file and serve
+  the directory over http — a file:// page can neither fetch the .wasm nor
+  start a module worker:
 
+      cp bindings/wasm/index.html bindings/wasm/worker.mjs bin/
       python3 -m http.server -d bin
 -->
 <html lang="en">
@@ -14,138 +16,352 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ForeFire in the browser</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14100e;
+        --panel: #1e1917;
+        --line: #3a302c;
+        --ink: #ede6e1;
+        --dim: #9c8f88;
+        --hot: #ff7a1a;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font: 14px/1.5 system-ui, sans-serif;
-        margin: 2rem auto;
-        max-width: 46rem;
-        padding: 0 1rem;
+        margin: 0;
+        padding: 2rem 1rem 4rem;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.6 system-ui, sans-serif;
+      }
+      main {
+        max-width: 60rem;
+        margin: 0 auto;
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: minmax(0, 1fr) 17rem;
+      }
+      header {
+        grid-column: 1 / -1;
+      }
+      h1 {
+        margin: 0 0 0.3rem;
+        font-size: 1.6rem;
+        letter-spacing: -0.01em;
+      }
+      header p {
+        margin: 0;
+        color: var(--dim);
+        max-width: 44rem;
       }
       canvas {
-        border: 1px solid #999;
+        display: block;
         width: 100%;
-        max-width: 520px;
         aspect-ratio: 1;
-        background: #111;
+        background: #0b0908;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+      }
+      aside {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      fieldset {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--panel);
+        padding: 0.9rem 1rem 1.1rem;
+        margin: 0;
+      }
+      legend {
+        color: var(--dim);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0 0.4rem;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        color: var(--dim);
+        margin-top: 0.7rem;
+      }
+      label:first-of-type {
+        margin-top: 0;
+      }
+      label span {
+        color: var(--ink);
+        float: right;
+        font-variant-numeric: tabular-nums;
+      }
+      input[type="range"] {
+        width: 100%;
+        margin: 0.3rem 0 0;
+        accent-color: var(--hot);
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
       }
       button {
+        flex: 1;
         font: inherit;
-        padding: 0.4rem 0.9rem;
+        padding: 0.45rem 0.5rem;
+        color: var(--ink);
+        background: #2b2320;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        cursor: pointer;
       }
-      #log {
-        white-space: pre-wrap;
+      button:hover:not(:disabled) {
+        border-color: var(--hot);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.9rem;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .check input {
+        accent-color: var(--hot);
+      }
+      dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 0.25rem 1rem;
         font-family: ui-monospace, monospace;
-        font-size: 12px;
-        color: #444;
+        font-size: 12.5px;
+      }
+      dt {
+        color: var(--dim);
+      }
+      dd {
+        margin: 0;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      @media (max-width: 46rem) {
+        main {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
     </style>
   </head>
   <body>
-    <h1>ForeFire in the browser</h1>
-    <p>
-      A 4 km square domain with a uniform fuel map and a turning wind, driven
-      from JavaScript typed arrays. Everything below runs in this tab.
-    </p>
-    <p><button id="run" disabled>Loading engine…</button></p>
-    <canvas id="view" width="520" height="520"></canvas>
-    <p id="log"></p>
+    <main>
+      <header>
+        <h1>ForeFire in the browser</h1>
+        <p>
+          A 4 km square of uniform fuel, ignited at the centre. The solver runs
+          in this tab, in a worker; the wind below is live, so steering it
+          redirects the fire on the next step.
+        </p>
+      </header>
+
+      <canvas id="view" width="900" height="900"></canvas>
+
+      <aside>
+        <fieldset>
+          <legend>Run</legend>
+          <div class="row">
+            <button id="play" disabled>Loading engine…</button>
+            <button id="reset" disabled>Reset</button>
+          </div>
+          <label
+            >Step length <span id="dtOut">15 s</span>
+            <input id="dt" type="range" min="5" max="60" step="5" value="15" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Wind</legend>
+          <label
+            >Speed <span id="speedOut">20 m/s</span>
+            <input id="speed" type="range" min="0" max="40" step="1" value="20" />
+          </label>
+          <label
+            >Direction <span id="dirOut">0°</span>
+            <input id="dir" type="range" min="0" max="359" step="1" value="0" />
+          </label>
+          <div class="check">
+            <input id="turning" type="checkbox" checked />
+            <label for="turning" style="margin: 0">turn 12° per step</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>State</legend>
+          <dl>
+            <dt>sim time</dt>
+            <dd id="mTime">0 s</dd>
+            <dt>steps</dt>
+            <dd id="mStep">0</dd>
+            <dt>front nodes</dt>
+            <dd id="mNodes">0</dd>
+            <dt>fronts</dt>
+            <dd id="mFronts">0</dd>
+            <dt>ms / step</dt>
+            <dd id="mMs">—</dd>
+          </dl>
+        </fieldset>
+      </aside>
+    </main>
 
     <script type="module">
-      import createForeFire from "./forefire.mjs";
-
-      const L = 4000;
-      const STEPS = 15;
-      const canvas = document.getElementById("view");
+      const $ = (id) => document.getElementById(id);
+      const canvas = $("view");
       const ctx = canvas.getContext("2d");
-      const log = document.getElementById("log");
-      const button = document.getElementById("run");
 
-      const Module = await createForeFire();
-      log.textContent = `ForeFire ${Module.version()} ready`;
-      button.disabled = false;
+      const worker = new Worker("./worker.mjs", { type: "module" });
 
-      function parseFront(text) {
-        return [...text.matchAll(/loc=\(([-\d.eE+]+),([-\d.eE+]+),/g)].map((m) => [
-          parseFloat(m[1]),
-          parseFloat(m[2]),
-        ]);
-      }
+      let latest = null; // most recent frame from the worker
+      let trail = []; // past perimeters, drawn fading
+      let running = false;
 
-      function draw(fronts) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const s = canvas.width / L;
-        fronts.forEach((nodes, i) => {
-          if (nodes.length === 0) return;
-          // Older fronts fade out, so the sequence reads as a progression.
-          ctx.strokeStyle = `hsl(${20 + i * 3} 90% ${40 + (i / fronts.length) * 30}%)`;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          nodes.forEach(([x, y], j) => {
-            // Canvas y grows downward; the domain's grows upward.
-            const px = x * s;
-            const py = canvas.height - y * s;
-            j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-          });
-          ctx.closePath();
-          ctx.stroke();
-        });
-      }
-
-      button.addEventListener("click", () => {
-        button.disabled = true;
-        const ff = new Module.ForeFire();
-
-        ff.setString("fuelsTable", "Index;vv_coeff;Kcurv;beta\n1;1.0;1.0;1.0");
-        ff.setDouble("defaultFuelType", 1);
-        for (const [k, v] of Object.entries({
-          spatialIncrement: 0.5,
-          minimalPropagativeFrontDepth: 10,
-          perimeterResolution: 10,
-          initialFrontDepth: 0.1,
-          relax: 1,
-          smoothing: 0,
-          minSpeed: 0,
-          bmapLayer: 1,
-          windReductionFactor: 1,
-        }))
-          ff.setDouble(k, v);
-        ff.setString("propagationModel", "WindDriven");
-
-        ff.execute(`FireDomain[sw=(0,0,0);ne=(${L},${L},0);t=0]`);
-
-        const W = 200;
-        const H = 200;
-        const fuel = new Int32Array(W * H).fill(1);
-        const windU = new Float64Array(2 * W * H);
-        windU.fill(1, 0, W * H);
-        const windV = new Float64Array(2 * W * H);
-        windV.fill(1, W * H);
-
-        ff.addLayer("propagation", "WindDriven", "propagationModel");
-        ff.addIndexLayer("table", "fuel", 0, 0, 0, L, L, 0, H, W, 1, 1, fuel);
-        ff.addScalarLayer("windScalDir", "windU", 0, 0, 0, L, L, 0, H, W, 2, 1, windU);
-        ff.addScalarLayer("windScalDir", "windV", 0, 0, 0, L, L, 0, H, W, 2, 1, windV);
-
-        ff.execute("startFire[loc=(2000,1200,0.);t=0]");
-
-        const fronts = [];
-        const started = performance.now();
-        for (let i = 0; i <= STEPS; i++) {
-          const angle = (i * 24 * Math.PI) / 180;
-          ff.execute(
-            `trigger[wind;loc=(0.,0.,0.);vel=(${(20 * Math.cos(angle)).toFixed(3)},` +
-              `${(20 * Math.sin(angle)).toFixed(3)},0)]`
-          );
-          ff.execute("step[dt=20]");
-          fronts.push(parseFront(ff.execute("print[]")));
+      worker.onmessage = ({ data }) => {
+        if (data.type === "ready") {
+          $("play").textContent = "Run";
+          $("play").disabled = false;
+          $("reset").disabled = false;
+          return;
         }
-        const elapsed = performance.now() - started;
+        if (data.type !== "frame") return;
 
-        draw(fronts);
-        const last = fronts[fronts.length - 1];
-        log.textContent =
-          `${STEPS} steps of 20 s in ${elapsed.toFixed(0)} ms — ` +
-          `${last.length} front nodes at t = ${ff.getTime()} s`;
-        button.disabled = false;
+        if (data.step === 0) trail = [];
+        else if (latest) trail.push(latest.fronts);
+        // The trail is decoration, not history — cap it so a long run does not
+        // grow without bound.
+        if (trail.length > 40) trail.shift();
+        latest = data;
+      };
+
+      // Drawing is decoupled from stepping: the worker posts whenever a step
+      // lands, the canvas repaints on its own rhythm.
+      function frame() {
+        if (latest) draw(latest);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      function draw(f) {
+        const size = canvas.width;
+        const s = size / f.domain;
+        ctx.fillStyle = "#0b0908";
+        ctx.fillRect(0, 0, size, size);
+
+        // Canvas y grows downward, the domain's grows upward.
+        const path = (coords) => {
+          const p = new Path2D();
+          for (let i = 0; i < coords.length; i += 2) {
+            const x = coords[i] * s;
+            const y = size - coords[i + 1] * s;
+            i === 0 ? p.moveTo(x, y) : p.lineTo(x, y);
+          }
+          p.closePath();
+          return p;
+        };
+
+        ctx.lineWidth = 1;
+        trail.forEach((fronts, i) => {
+          ctx.strokeStyle = `rgba(255,122,26,${0.06 + (i / trail.length) * 0.22})`;
+          fronts.forEach((c) => ctx.stroke(path(c)));
+        });
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffb066";
+        ctx.fillStyle = "rgba(255,122,26,0.16)";
+        f.fronts.forEach((c) => {
+          const p = path(c);
+          ctx.fill(p);
+          ctx.stroke(p);
+        });
+
+        drawWind(f.wind, size);
+      }
+
+      function drawWind({ deg, speed }, size) {
+        if (speed === 0) return;
+        const cx = size - 84;
+        const cy = 84;
+        const r = 34 * (0.35 + (0.65 * speed) / 40);
+        const rad = (deg * Math.PI) / 180;
+        const dx = Math.cos(rad);
+        const dy = -Math.sin(rad);
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(237,230,225,0.5)";
+        ctx.fillStyle = "rgba(237,230,225,0.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - dx * r, cy - dy * r);
+        ctx.lineTo(cx + dx * r, cy + dy * r);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + dx * r, cy + dy * r);
+        ctx.lineTo(cx + dx * (r - 12) - dy * 7, cy + dy * (r - 12) + dx * 7);
+        ctx.lineTo(cx + dx * (r - 12) + dy * 7, cy + dy * (r - 12) - dx * 7);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Metrics update on their own timer: at 60 fps the numbers would be
+      // unreadable, and they only change when a step lands anyway.
+      setInterval(() => {
+        if (!latest) return;
+        $("mTime").textContent = `${latest.t.toFixed(0)} s`;
+        $("mStep").textContent = latest.step;
+        $("mNodes").textContent = latest.nodes;
+        $("mFronts").textContent = latest.fronts.length;
+        $("mMs").textContent = latest.ms ? latest.ms.toFixed(0) : "—";
+      }, 250);
+
+      $("play").addEventListener("click", () => {
+        running = !running;
+        worker.postMessage({ type: running ? "play" : "pause" });
+        $("play").textContent = running ? "Pause" : "Run";
+      });
+
+      $("reset").addEventListener("click", () => {
+        running = false;
+        $("play").textContent = "Run";
+        latest = null;
+        trail = [];
+        worker.postMessage({ type: "pause" });
+        worker.postMessage({ type: "reset" });
+      });
+
+      const sendWind = () =>
+        worker.postMessage({
+          type: "wind",
+          wind: {
+            speed: +$("speed").value,
+            angleDeg: +$("dir").value,
+            turning: $("turning").checked,
+          },
+        });
+
+      $("speed").addEventListener("input", () => {
+        $("speedOut").textContent = `${$("speed").value} m/s`;
+        sendWind();
+      });
+      $("dir").addEventListener("input", () => {
+        $("dirOut").textContent = `${$("dir").value}°`;
+        $("turning").checked = false;
+        sendWind();
+      });
+      $("turning").addEventListener("change", sendWind);
+      $("dt").addEventListener("input", () => {
+        $("dtOut").textContent = `${$("dt").value} s`;
+        worker.postMessage({ type: "dt", dt: +$("dt").value });
       });
     </script>
   </body>
