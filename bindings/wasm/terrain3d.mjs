@@ -151,6 +151,92 @@ export function mvpFor({ azimuth, elevation, distance, aspect, exaggeration, sid
 	return multiply(view, model);
 }
 
+/*!
+ * The world-space ray through a point on the screen.
+ *
+ * Rebuilt from the camera basis rather than by inverting the projection: the
+ * basis is the same one `lookAt` builds, so the two cannot drift apart, and
+ * there is no 4x4 inverse to get subtly wrong.
+ */
+export function rayFor({ azimuth, elevation, distance, fov = ORBIT_FOV }, ndcX, ndcY, aspect) {
+	const eye = [
+		distance * Math.cos(elevation) * Math.sin(azimuth),
+		-distance * Math.cos(elevation) * Math.cos(azimuth),
+		distance * Math.sin(elevation),
+	];
+	const norm = (v) => {
+		const l = Math.hypot(...v) || 1;
+		return [v[0] / l, v[1] / l, v[2] / l];
+	};
+	const cross = (a, b) => [
+		a[1] * b[2] - a[2] * b[1],
+		a[2] * b[0] - a[0] * b[2],
+		a[0] * b[1] - a[1] * b[0],
+	];
+	const forward = norm([-eye[0], -eye[1], -eye[2]]);
+	const right = norm(cross(forward, [0, 0, 1]));
+	const up = cross(right, forward);
+	const half = Math.tan(fov / 2);
+	const dir = norm([
+		forward[0] + right[0] * ndcX * half * aspect + up[0] * ndcY * half,
+		forward[1] + right[1] * ndcX * half * aspect + up[1] * ndcY * half,
+		forward[2] + right[2] * ndcX * half * aspect + up[2] * ndcY * half,
+	]);
+	return { origin: eye, dir };
+}
+
+/*!
+ * March a ray until it drops through a heightfield, and return where.
+ *
+ * `heightAt(u, v)` gives the surface in the same units as the ray, over the
+ * unit square the mesh occupies. Returns normalised `[u, v]` in [0, 1], or
+ * null if the ray never meets the ground — clicking the sky.
+ *
+ * Fixed-step march to bracket the crossing, then bisection to land on it. A
+ * closed-form solve is not available against an interpolated grid, and a coarse
+ * march alone would let the point slide down steep faces.
+ */
+export function raycastHeightfield({ origin, dir }, heightAt, { reach = 6, steps = 2048 } = {}) {
+	const at = (t) => [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
+	const gap = (t) => {
+		const p = at(t);
+		const u = p[0] + 0.5;
+		const v = p[1] + 0.5;
+		if (u < 0 || u > 1 || v < 0 || v > 1) return null; // off the square
+		return p[2] - heightAt(u, v);
+	};
+
+	const step = reach / steps;
+	let prevT = null;
+	let prevGap = null;
+	for (let i = 0; i <= steps; i++) {
+		const t = i * step;
+		const g = gap(t);
+		if (g === null) {
+			prevT = null;
+			prevGap = null;
+			continue;
+		}
+		if (prevGap !== null && prevGap > 0 && g <= 0) {
+			let lo = prevT;
+			let hi = t;
+			for (let k = 0; k < 24; k++) {
+				const mid = (lo + hi) / 2;
+				const gm = gap(mid);
+				if (gm === null) break;
+				if (gm > 0) lo = mid;
+				else hi = mid;
+			}
+			const p = at((lo + hi) / 2);
+			const clamp01 = (x) => Math.max(0, Math.min(1, x));
+			return [clamp01(p[0] + 0.5), clamp01(p[1] + 0.5)];
+		}
+		prevT = t;
+		prevGap = g;
+	}
+	return null;
+}
+
 /*! Apply a column-major 4x4 to a point, returning normalised device
  *  coordinates and the clip-space w (positive means in front of the camera). */
 export function projectPoint(m, [x, y, z]) {
@@ -198,12 +284,17 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 	// time by the exaggeration.
 	const positions = new Float32Array(N * N * 3);
 	const uvs = new Float32Array(N * N * 2);
+	// The same heights the mesh is drawn from, kept for picking: sampling the
+	// full-resolution field instead would let a click land somewhere the
+	// visible surface is not.
+	const meshZ = new Float32Array(N * N);
 	for (let iy = 0; iy < N; iy++)
 		for (let ix = 0; ix < N; ix++) {
 			const i = iy * N + ix;
+			meshZ[i] = at(ix, iy) - mid;
 			positions[i * 3] = ix / (N - 1) - 0.5;
 			positions[i * 3 + 1] = iy / (N - 1) - 0.5;
-			positions[i * 3 + 2] = at(ix, iy) - mid;
+			positions[i * 3 + 2] = meshZ[i];
 			uvs[i * 2] = ix / (N - 1);
 			// The texture is the map as drawn, whose rows run north to south;
 			// the mesh's y runs south to north, so v flips.
@@ -329,6 +420,42 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 		/*! 0 = the flat map, 1 = the orbit. Driven by the page's animation. */
 		setTransition(t) {
 			transition = Math.max(0, Math.min(1, t));
+		},
+		/*!
+		 * Where a click on the canvas meets the ground.
+		 *
+		 * `ndcX`/`ndcY` are normalised device coordinates, -1 to 1 with y up.
+		 * Returns the point in the domain's metres, or null for a click that
+		 * missed the terrain entirely.
+		 */
+		pick(ndcX, ndcY, aspect) {
+			const cam = blendCamera({ ...camera, exaggeration }, transition);
+			const zScale = cam.exaggeration / side;
+			// Bilinear over the mesh vertices, which is what the triangles
+			// interpolate between; nearest would quantise a click to a cell.
+			const heightAt = (u, v) => {
+				const gx = u * (N - 1);
+				const gy = v * (N - 1);
+				const ix = Math.max(0, Math.min(N - 2, Math.floor(gx)));
+				const iy = Math.max(0, Math.min(N - 2, Math.floor(gy)));
+				const fx = gx - ix;
+				const fy = gy - iy;
+				const z00 = meshZ[iy * N + ix];
+				const z10 = meshZ[iy * N + ix + 1];
+				const z01 = meshZ[(iy + 1) * N + ix];
+				const z11 = meshZ[(iy + 1) * N + ix + 1];
+				return (
+					((z00 * (1 - fx) + z10 * fx) * (1 - fy) +
+						(z01 * (1 - fx) + z11 * fx) * fy) *
+					zScale
+				);
+			};
+			const hit = raycastHeightfield(
+				rayFor(cam, ndcX, ndcY, aspect),
+				heightAt,
+				{ reach: cam.distance + 3 }
+			);
+			return hit ? [hit[0] * side, hit[1] * side] : null;
 		},
 		elevationRange: { lo, hi },
 	};

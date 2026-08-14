@@ -159,8 +159,17 @@ handover. Going back holds the GL canvas until the camera is flat again.
 The flat pose stops a third of a degree short of vertical on purpose — straight
 down puts the view direction on the up vector and `lookAt` divides by zero.
 
-`mvpFor`, `blendCamera` and `projectPoint` are exported so the camera can be
-checked without a GL context — feed the mesh's corners through and confirm they land in front of
+Clicking the terrain moves the ignition point, which needs a ray cast rather
+than a coordinate transform: `rayFor` rebuilds the world-space ray through a
+pixel from the same camera basis `lookAt` uses, and `raycastHeightfield`
+marches it until it drops through the surface, then bisects onto the crossing.
+It stops at the first ground it meets, so a click cannot land on a slope hidden
+behind a ridge. Picking samples the mesh's own vertex heights, not the
+full-resolution field, or a click could land somewhere the visible surface is
+not.
+
+`mvpFor`, `blendCamera`, `rayFor`, `raycastHeightfield` and `projectPoint` are
+exported so the camera can be checked without a GL context — feed the mesh's corners through and confirm they land in front of
 the camera and inside the clip volume. That test exists because the first
 version of `multiply` indexed its matrices row-major while `perspective`,
 `lookAt` and `uniformMatrix4fv` were all column-major. It still returned a
