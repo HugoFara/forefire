@@ -6,26 +6,36 @@
  * stutter the page and freeze the controls if it ran inline. Off the main
  * thread, the canvas keeps painting and the wind stays draggable while the
  * solver works.
+ *
+ * The fuel map arrives from the main thread, which is where it has to be built:
+ * classifying satellite imagery needs a canvas, and workers have no DOM.
  */
 
 import createForeFire from "./forefire.mjs";
-
-const L = 4000; // domain side, metres
-const W = 200; // layer grid
-const H = 200;
 
 let Module = null;
 let ff = null;
 let running = false;
 let step = 0;
-let wind = { speed: 20, angleDeg: 0, turning: true, turnPerStep: 12 };
 let dt = 15;
+let wind = { speed: 20, angleDeg: 0, turning: true, turnPerStep: 12 };
+
+// Replaced by the real landscape as soon as the main thread has one; until
+// then a uniform burnable field, so the demo works offline.
+let land = {
+	side: 4000,
+	nx: 200,
+	ny: 200,
+	fuel: null,
+	fuelsTable: "Index;vv_coeff;Kcurv;beta\n1;1.0;1.0;1.0",
+};
 
 /*! Rebuild a domain from scratch. Cheap enough to do on every reset. */
 function reset() {
+	const { side, nx, ny } = land;
 	ff = new Module.ForeFire();
 
-	ff.setString("fuelsTable", "Index;vv_coeff;Kcurv;beta\n1;1.0;1.0;1.0");
+	ff.setString("fuelsTable", land.fuelsTable);
 	ff.setDouble("defaultFuelType", 1);
 	for (const [key, value] of Object.entries({
 		spatialIncrement: 0.5,
@@ -41,25 +51,25 @@ function reset() {
 		ff.setDouble(key, value);
 	ff.setString("propagationModel", "WindDriven");
 
-	ff.execute(`FireDomain[sw=(0,0,0);ne=(${L},${L},0);t=0]`);
+	ff.execute(`FireDomain[sw=(0,0,0);ne=(${side},${side},0);t=0]`);
 
-	// Uniform fuel, and the two-plane wind layers the WindDriven model reads:
-	// plane 0 carries the u response, plane 1 the v response.
-	const fuel = new Int32Array(W * H).fill(1);
-	const windU = new Float64Array(2 * W * H);
-	windU.fill(1, 0, W * H);
-	const windV = new Float64Array(2 * W * H);
-	windV.fill(1, W * H);
+	const fuel = land.fuel ? land.fuel : new Int32Array(nx * ny).fill(1);
+	// Two-plane wind layers: plane 0 carries the u response, plane 1 the v.
+	const windU = new Float64Array(2 * nx * ny);
+	windU.fill(1, 0, nx * ny);
+	const windV = new Float64Array(2 * nx * ny);
+	windV.fill(1, nx * ny);
 
+	const S = side;
 	const ok = [
 		ff.addLayer("propagation", "WindDriven", "propagationModel"),
-		ff.addIndexLayer("table", "fuel", 0, 0, 0, L, L, 0, H, W, 1, 1, fuel),
-		ff.addScalarLayer("windScalDir", "windU", 0, 0, 0, L, L, 0, H, W, 2, 1, windU),
-		ff.addScalarLayer("windScalDir", "windV", 0, 0, 0, L, L, 0, H, W, 2, 1, windV),
+		ff.addIndexLayer("table", "fuel", 0, 0, 0, S, S, 0, nx, ny, 1, 1, fuel),
+		ff.addScalarLayer("windScalDir", "windU", 0, 0, 0, S, S, 0, nx, ny, 2, 1, windU),
+		ff.addScalarLayer("windScalDir", "windV", 0, 0, 0, S, S, 0, nx, ny, 2, 1, windV),
 	];
 	if (ok.some((v) => !v)) throw new Error("a layer failed to register");
 
-	ff.execute(`startFire[loc=(${L / 2},${L / 2},0.);t=0]`);
+	ff.execute(`startFire[loc=(${side / 2},${side / 2},0.);t=0]`);
 	step = 0;
 	postFrame(0);
 }
@@ -106,7 +116,7 @@ function postFrame(ms) {
 			nodes,
 			fronts,
 			wind: { vx, vy, deg, speed: wind.speed },
-			domain: L,
+			domain: land.side,
 		},
 		fronts.map((f) => f.buffer)
 	);
@@ -128,6 +138,12 @@ function tick() {
 self.onmessage = (event) => {
 	const msg = event.data;
 	switch (msg.type) {
+		case "landscape":
+			running = false;
+			// Kept, not consumed: every later reset rebuilds the domain from it.
+			land = { side: msg.side, nx: msg.nx, ny: msg.ny, fuel: msg.fuel, fuelsTable: msg.fuelsTable };
+			reset();
+			break;
 		case "reset":
 			running = false;
 			reset();

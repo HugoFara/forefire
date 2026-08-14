@@ -1,13 +1,13 @@
 <!doctype html>
 <!--
   Live browser demo for the WebAssembly build (issue #171). No server-side
-  ForeFire, no NetCDF, no listenHTTP: the engine runs in this tab, in a worker.
+  ForeFire, no NetCDF, no listenHTTP: the engine runs in this tab, in a worker,
+  on a fuel map classified from satellite imagery in the browser.
 
-  Copy forefire.mjs, forefire.wasm and worker.mjs next to this file and serve
-  the directory over http — a file:// page can neither fetch the .wasm nor
-  start a module worker:
+  Copy the four files next to the build outputs and serve the directory over
+  http — a file:// page can neither fetch the .wasm nor start a module worker:
 
-      cp bindings/wasm/index.html bindings/wasm/worker.mjs bin/
+      cp bindings/wasm/{index.html,worker.mjs,landscape.mjs} bin/
       python3 -m http.server -d bin
 -->
 <html lang="en">
@@ -36,7 +36,7 @@
         font: 15px/1.6 system-ui, sans-serif;
       }
       main {
-        max-width: 60rem;
+        max-width: 62rem;
         margin: 0 auto;
         display: grid;
         gap: 1.5rem;
@@ -53,7 +53,10 @@
       header p {
         margin: 0;
         color: var(--dim);
-        max-width: 44rem;
+        max-width: 46rem;
+      }
+      figure {
+        margin: 0;
       }
       canvas {
         display: block;
@@ -62,6 +65,11 @@
         background: #0b0908;
         border: 1px solid var(--line);
         border-radius: 4px;
+      }
+      figcaption {
+        margin-top: 0.5rem;
+        font-size: 12px;
+        color: var(--dim);
       }
       aside {
         display: flex;
@@ -149,7 +157,21 @@
         text-align: right;
         font-variant-numeric: tabular-nums;
       }
-      @media (max-width: 46rem) {
+      .key {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 12.5px;
+        color: var(--dim);
+        margin-top: 0.4rem;
+      }
+      .sw {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        flex: none;
+      }
+      @media (max-width: 48rem) {
         main {
           grid-template-columns: minmax(0, 1fr);
         }
@@ -161,13 +183,18 @@
       <header>
         <h1>ForeFire in the browser</h1>
         <p>
-          A 4 km square of uniform fuel, ignited at the centre. The solver runs
-          in this tab, in a worker; the wind below is live, so steering it
-          redirects the fire on the next step.
+          A 4 km square of the Ajaccio hinterland, Corsica — the site of the
+          repository's own test case. The fuel map is classified from the
+          satellite imagery in this tab, the solver runs in a worker beside it,
+          and the wind below is live, so steering it redirects the fire on the
+          next step.
         </p>
       </header>
 
-      <canvas id="view" width="900" height="900"></canvas>
+      <figure>
+        <canvas id="view" width="900" height="900"></canvas>
+        <figcaption id="credit">Loading imagery…</figcaption>
+      </figure>
 
       <aside>
         <fieldset>
@@ -199,6 +226,19 @@
         </fieldset>
 
         <fieldset>
+          <legend>Fuel</legend>
+          <div class="check" style="margin-top: 0">
+            <input id="showFuel" type="checkbox" />
+            <label for="showFuel" style="margin: 0">show classified map</label>
+          </div>
+          <label
+            >Overlay opacity <span id="fuelAlphaOut">55%</span>
+            <input id="fuelAlpha" type="range" min="10" max="100" step="5" value="55" />
+          </label>
+          <div id="legend"></div>
+        </fieldset>
+
+        <fieldset>
           <legend>State</legend>
           <dl>
             <dt>sim time</dt>
@@ -217,15 +257,67 @@
     </main>
 
     <script type="module">
+      import { buildLandscape, fuelOverlay, FUELS, FUELS_TABLE } from "./landscape.mjs";
+
+      const SITE = {
+        // startFire[lonlat=(8.70, 41.952, 0)] in tests/runff/run.ff.
+        lon: 8.7,
+        lat: 41.952,
+        side: 4000, // metres
+        zoom: 15,
+        grid: 256, // fuel cells per side — 15.6 m at this size
+      };
+
       const $ = (id) => document.getElementById(id);
       const canvas = $("view");
       const ctx = canvas.getContext("2d");
-
       const worker = new Worker("./worker.mjs", { type: "module" });
 
       let latest = null; // most recent frame from the worker
       let trail = []; // past perimeters, drawn fading
       let running = false;
+      let imagery = null; // satellite canvas, or null when offline
+      let overlay = null; // classified fuel raster
+
+      // Fuel legend, built from the same table the engine is given.
+      $("legend").innerHTML = FUELS.map(
+        (f) =>
+          `<div class="key"><span class="sw" style="background:rgb(${f.rgb})"></span>` +
+          `${f.label} — ROS ×${f.vv}</div>`
+      ).join("");
+
+      // Imagery and engine load in parallel; whichever finishes first waits.
+      buildLandscape(SITE)
+        .then((land) => {
+          imagery = land.image;
+          overlay = fuelOverlay(land.fuel, land.nx);
+          const total = land.nx * land.ny;
+          const pct = (n) => Math.round((100 * n) / total);
+          $("credit").innerHTML =
+            `Imagery © Esri, Maxar, Earthstar Geographics. ` +
+            `Fuel classified in-browser at ${land.metresPerPx.toFixed(1)} m/px: ` +
+            `${pct(land.counts[1])}% dense, ${pct(land.counts[2])}% sparse, ` +
+            `${pct(land.counts[3])}% non-burnable.`;
+          worker.postMessage(
+            {
+              type: "landscape",
+              fuel: land.fuel,
+              nx: land.nx,
+              ny: land.ny,
+              side: SITE.side,
+              fuelsTable: FUELS_TABLE,
+            },
+            [land.fuel.buffer]
+          );
+        })
+        .catch((err) => {
+          // Offline, or the tile host is unreachable. The worker keeps its
+          // uniform-fuel default, so the demo still runs.
+          console.warn("imagery unavailable:", err);
+          $("credit").textContent =
+            "Imagery unavailable — running on uniform fuel instead.";
+          $("showFuel").disabled = true;
+        });
 
       worker.onmessage = ({ data }) => {
         if (data.type === "ready") {
@@ -255,8 +347,22 @@
       function draw(f) {
         const size = canvas.width;
         const s = size / f.domain;
-        ctx.fillStyle = "#0b0908";
-        ctx.fillRect(0, 0, size, size);
+
+        if (imagery) ctx.drawImage(imagery, 0, 0, size, size);
+        else {
+          ctx.fillStyle = "#0b0908";
+          ctx.fillRect(0, 0, size, size);
+        }
+
+        if (overlay && $("showFuel").checked) {
+          ctx.save();
+          ctx.globalAlpha = +$("fuelAlpha").value / 100;
+          // Nearest-neighbour: these are classes, and smoothing them invents
+          // fuel types that are not in the table.
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(overlay, 0, 0, size, size);
+          ctx.restore();
+        }
 
         // Canvas y grows downward, the domain's grows upward.
         const path = (coords) => {
@@ -272,13 +378,13 @@
 
         ctx.lineWidth = 1;
         trail.forEach((fronts, i) => {
-          ctx.strokeStyle = `rgba(255,122,26,${0.06 + (i / trail.length) * 0.22})`;
+          ctx.strokeStyle = `rgba(255,122,26,${0.06 + (i / trail.length) * 0.24})`;
           fronts.forEach((c) => ctx.stroke(path(c)));
         });
 
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "#ffb066";
-        ctx.fillStyle = "rgba(255,122,26,0.16)";
+        ctx.strokeStyle = "#ffc47a";
+        ctx.fillStyle = "rgba(255,90,10,0.28)";
         f.fronts.forEach((c) => {
           const p = path(c);
           ctx.fill(p);
@@ -298,8 +404,13 @@
         const dy = -Math.sin(rad);
 
         ctx.save();
-        ctx.strokeStyle = "rgba(237,230,225,0.5)";
-        ctx.fillStyle = "rgba(237,230,225,0.5)";
+        // A disc behind it, or the arrow disappears over pale ground.
+        ctx.fillStyle = "rgba(20,16,14,0.55)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 46, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(237,230,225,0.85)";
+        ctx.fillStyle = "rgba(237,230,225,0.85)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(cx - dx * r, cy - dy * r);
@@ -362,6 +473,9 @@
       $("dt").addEventListener("input", () => {
         $("dtOut").textContent = `${$("dt").value} s`;
         worker.postMessage({ type: "dt", dt: +$("dt").value });
+      });
+      $("fuelAlpha").addEventListener("input", () => {
+        $("fuelAlphaOut").textContent = `${$("fuelAlpha").value}%`;
       });
     </script>
   </body>

@@ -56,13 +56,43 @@ Headless, under Node:
 node bindings/wasm/smoke.mjs bin/forefire.mjs
 ```
 
-In a browser — copy `index.html` next to the two build outputs and serve the
-directory, since a `file://` page cannot fetch the `.wasm`:
+In a browser — copy the three page files next to the build outputs and serve
+the directory, since a `file://` page can neither fetch the `.wasm` nor start a
+module worker:
 
 ```sh
-cp bindings/wasm/index.html bin/
+cp bindings/wasm/{index.html,worker.mjs,landscape.mjs} bin/
 python3 -m http.server -d bin
 ```
+
+The page runs the solver in a worker (`worker.mjs`) and repaints as each step
+lands, so the fire evolves live and the wind can be steered mid-run. Off the
+main thread is not optional: a step costs 15 ms early and hundreds once the
+front carries a few thousand nodes, which inline would freeze the tab.
+
+### The fuel map comes from the imagery
+
+`landscape.mjs` fetches satellite tiles for a 4 km square of the Ajaccio
+hinterland — the site of `tests/runff/run.ff` — draws them to a canvas,
+and classifies the pixels into fuel indices by excess green,
+`g - (r + b) / 2`:
+
+| Class | Cut | `vv_coeff` | Share of the site |
+| --- | --- | --- | --- |
+| dense vegetation | ≥ 20 | 1.0 | ~44% |
+| sparse / grass | ≥ 10 | 0.45 | ~32% |
+| bare, built, water | below | 0.0 | ~24% |
+
+It is greenness, not a land-cover product, but it makes the imagery
+load-bearing rather than decorative: `ROS = vv_coeff × normal wind`, so
+`vv_coeff = 0` is a barrier, and the fire visibly slows on sparse ground and
+stops at clearings, tracks and rooftops. Verified against a synthetic
+non-burnable ring: the front reached 901 m against a barrier at 880 m, one
+15.6 m fuel cell of overshoot.
+
+This is the whole "no NetCDF, no GIS" story in one file — tiles in, an
+`Int32Array` out, straight into `addIndexLayer`. If the tile host is
+unreachable the page falls back to uniform fuel and says so.
 
 ## The API
 
