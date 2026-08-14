@@ -54,6 +54,25 @@ function resolution(lat, zoom) {
 	return (156543.03392804097 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
+/*! Metres per degree, near enough for panning a few kilometres. */
+export const M_PER_DEG_LAT = 111320;
+export const mPerDegLon = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
+
+export const SIDE_LIMITS = { min: 500, max: 30000 };
+
+/*!
+ * Pick a tile zoom for a domain of `side` metres.
+ *
+ * Chosen so the mosaic stays around a thousand pixels whatever the domain
+ * size: the tile count per fetch stays roughly constant, and the imagery keeps
+ * pace with the ground it covers. Capped at 15, past which the terrain tiles
+ * are upsampled rather than more detailed.
+ */
+export function zoomFor(lat, side, targetPx = 1024) {
+	const ideal = Math.log2((156543.03392804097 * Math.cos((lat * Math.PI) / 180) * targetPx) / side);
+	return Math.max(10, Math.min(15, Math.round(ideal)));
+}
+
 function loadImage(url) {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
@@ -104,7 +123,7 @@ function resample(canvas, grid) {
  * (t,z,y,x) order with row 0 at the domain's south edge. Throws if the tiles
  * cannot be fetched, so the caller can fall back.
  */
-export async function buildLandscape({ lon, lat, side, zoom, grid }) {
+export async function buildLandscape({ lon, lat, side, grid, zoom = zoomFor(lat, side) }) {
 	const metresPerPx = resolution(lat, zoom);
 	const sidePx = Math.round(side / metresPerPx);
 	const [cx, cy] = project(lon, lat, zoom);
@@ -145,7 +164,21 @@ export async function buildLandscape({ lon, lat, side, zoom, grid }) {
 		}
 	}
 
-	return { image, fuel, altitude, nx: grid, ny: grid, counts, metresPerPx, sidePx, elevation: { lo, hi } };
+	return {
+		image,
+		fuel,
+		altitude,
+		nx: grid,
+		ny: grid,
+		counts,
+		metresPerPx,
+		sidePx,
+		zoom,
+		// The square this landscape actually covers, which the page needs to
+		// keep straight from the square the user is currently looking at.
+		site: { lon, lat, side },
+		elevation: { lo, hi },
+	};
 }
 
 /*! A translucent raster of the fuel classes, drawn at simulation resolution and

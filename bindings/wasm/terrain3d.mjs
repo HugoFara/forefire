@@ -44,15 +44,18 @@ function compile(gl, type, src) {
 	return s;
 }
 
+/*! Column-major, like everything else here and like uniformMatrix4fv with
+ *  transpose=false: element (row r, column c) lives at index c*4 + r. Indexing
+ *  this the other way round still type-checks and still produces a matrix; it
+ *  just projects the mesh into streaks radiating from a vanishing point. */
 function multiply(a, b) {
 	const o = new Float32Array(16);
-	for (let r = 0; r < 4; r++)
-		for (let c = 0; c < 4; c++)
-			o[c + 4 * r] =
-				a[0 + 4 * r] * b[c + 0] +
-				a[1 + 4 * r] * b[c + 4] +
-				a[2 + 4 * r] * b[c + 8] +
-				a[3 + 4 * r] * b[c + 12];
+	for (let c = 0; c < 4; c++)
+		for (let r = 0; r < 4; r++) {
+			let sum = 0;
+			for (let k = 0; k < 4; k++) sum += a[k * 4 + r] * b[c * 4 + k];
+			o[c * 4 + r] = sum;
+		}
 	return o;
 }
 
@@ -87,6 +90,38 @@ function lookAt(eye, target, up) {
 		x[2], y[2], z[2], 0,
 		-dot(x, eye), -dot(y, eye), -dot(z, eye), 1,
 	]);
+}
+
+/*!
+ * The full model-view-projection for a camera orbiting the origin.
+ *
+ * Exported so it can be checked without a GL context: feed it corners of the
+ * mesh and confirm they land inside the clip volume. That is the test the
+ * column-major slip above would have failed.
+ */
+export function mvpFor({ azimuth, elevation, distance, aspect, exaggeration, side }) {
+	const eye = [
+		distance * Math.cos(elevation) * Math.sin(azimuth),
+		-distance * Math.cos(elevation) * Math.cos(azimuth),
+		distance * Math.sin(elevation),
+	];
+	const view = multiply(
+		perspective(Math.PI / 4, aspect, 0.05, 20),
+		lookAt(eye, [0, 0, 0], [0, 0, 1])
+	);
+	// x and y are a unit square standing for `side` metres, while z is still
+	// metres; dividing by `side` puts them back in proportion, and the
+	// exaggeration then lifts the relief to something readable.
+	const zScale = exaggeration / side;
+	const model = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, zScale, 0, 0, 0, 0, 1]);
+	return multiply(view, model);
+}
+
+/*! Apply a column-major 4x4 to a point, returning normalised device
+ *  coordinates and the clip-space w (positive means in front of the camera). */
+export function projectPoint(m, [x, y, z]) {
+	const c = [0, 1, 2, 3].map((r) => m[0 + r] * x + m[4 + r] * y + m[8 + r] * z + m[12 + r]);
+	return { ndc: [c[0] / c[3], c[1] / c[3], c[2] / c[3]], w: c[3] };
 }
 
 /*!
@@ -214,22 +249,7 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 		gl.viewport(0, 0, w, h);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-		const { azimuth, elevation, distance } = camera;
-		const eye = [
-			distance * Math.cos(elevation) * Math.sin(azimuth),
-			-distance * Math.cos(elevation) * Math.cos(azimuth),
-			distance * Math.sin(elevation),
-		];
-		const mvp = multiply(
-			perspective(Math.PI / 4, w / h, 0.05, 20),
-			lookAt(eye, [0, 0, 0], [0, 0, 1])
-		);
-		// x and y are a unit square standing for `side` metres, while z is still
-		// metres; dividing by `side` puts them back in proportion, and the
-		// exaggeration then lifts the relief to something readable.
-		const zScale = exaggeration / side;
-		const model = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, zScale, 0, 0, 0, 0, 1]);
-		const final = multiply(mvp, model);
+		const final = mvpFor({ ...camera, aspect: w / h, exaggeration, side });
 
 		gl.useProgram(program);
 		gl.uniformMatrix4fv(loc.mvp, false, final);
@@ -263,7 +283,9 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 			camera.elevation = Math.max(0.08, Math.min(1.45, camera.elevation + dEl));
 		},
 		zoom(factor) {
-			camera.distance = Math.max(0.7, Math.min(5, camera.distance * factor));
+			// The near limit stops short of the point where the mesh's corners
+			// all leave the frame and the view loses its footing.
+			camera.distance = Math.max(0.9, Math.min(5, camera.distance * factor));
 		},
 		setExaggeration(v) {
 			exaggeration = v;

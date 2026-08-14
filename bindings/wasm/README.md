@@ -72,10 +72,21 @@ main thread is what keeps the page answering while that happens.
 
 ### The landscape comes from map tiles
 
-`landscape.mjs` fetches two tiled layers for a 4 km square of the Ajaccio
-hinterland — the site of `tests/runff/run.ff` — and decodes both into layer
-arrays. No NetCDF, no GIS stack: tiles in, an `Int32Array` and a
-`Float64Array` out, straight into `addIndexLayer` and `addScalarLayer`.
+`landscape.mjs` fetches two tiled layers for a square of ground and decodes
+both into layer arrays. No NetCDF, no GIS stack: tiles in, an `Int32Array` and
+a `Float64Array` out, straight into `addIndexLayer` and `addScalarLayer`.
+
+The page opens on a 4 km square of the Ajaccio hinterland — the site of
+`tests/runff/run.ff` — but the map is live: drag to pan, scroll to resize the
+domain between 500 m and 30 km, and click to place the ignition. The tile zoom
+is chosen from the domain size so the mosaic stays around a thousand pixels and
+36 tiles whatever the scale. Changing the ground clears the run, since the old
+fronts belong to ground that is no longer under them; the fetch is debounced
+and the canvas previews the move with the tiles it already has.
+
+The ignition point is stored as a longitude and latitude rather than as domain
+metres, so panning and zooming leave it on the same patch of ground instead of
+sliding it across the map.
 
 **Fuel**, from satellite imagery, classified by excess green `g - (r+b)/2`
 into three rows of the repository's own `tests/runff/fuels.csv`:
@@ -128,6 +139,14 @@ of dependency. The texture is whatever the 2D view painted, so the two views
 cannot disagree. Drag to orbit, scroll to zoom, and the vertical exaggeration
 is adjustable because 750 m of relief over 4 km is subtle at true scale. The
 view degrades to 2D if WebGL is unavailable.
+
+`mvpFor` and `projectPoint` are exported so the camera can be checked without a
+GL context — feed the mesh's corners through and confirm they land in front of
+the camera and inside the clip volume. That test exists because the first
+version of `multiply` indexed its matrices row-major while `perspective`,
+`lookAt` and `uniformMatrix4fv` were all column-major. It still returned a
+matrix, and the mesh still drew; it just drew as streaks radiating from a
+vanishing point.
 
 ## The API
 
