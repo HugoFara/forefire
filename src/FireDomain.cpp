@@ -802,8 +802,11 @@
 					 FuelDataLayer<double>* newlayer = new FuelDataLayer<double>(name,	origin, t0, span, timespan, nnx, nny, nnz, nnk,				values);
 				 
 					 dataBroker->registerLayer(name, newlayer);
+					 return true;
 			 }
- 
+
+			 /* Either an unknown type, or a flux layer whose model would not
+			  * instantiate; both leave the domain without the layer. */
 			 return false;
 		 }
  
