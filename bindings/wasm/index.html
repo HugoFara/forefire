@@ -1,13 +1,16 @@
 <!doctype html>
 <!--
-  Live browser demo for the WebAssembly build (issue #171). No server-side
-  ForeFire, no NetCDF, no listenHTTP: the engine runs in this tab, in a worker,
-  on a fuel map classified from satellite imagery in the browser.
+  Browser demo for the WebAssembly build (issue #171). No server-side ForeFire,
+  no NetCDF, no listenHTTP: the engine runs in this tab, on a fuel map and an
+  elevation field decoded from public map tiles.
 
-  Copy the four files next to the build outputs and serve the directory over
+  A whole run costs a fraction of a second to a few seconds, so it is computed
+  up front and then scrubbed on a timeline rather than watched a step at a time.
+
+  Copy the page files next to the build outputs and serve the directory over
   http — a file:// page can neither fetch the .wasm nor start a module worker:
 
-      cp bindings/wasm/{index.html,worker.mjs,landscape.mjs} bin/
+      cp bindings/wasm/{index.html,worker.mjs,landscape.mjs,terrain3d.mjs} bin/
       python3 -m http.server -d bin
 -->
 <html lang="en">
@@ -25,9 +28,7 @@
         --dim: #9c8f88;
         --hot: #ff7a1a;
       }
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         padding: 2rem 1rem 4rem;
@@ -36,29 +37,18 @@
         font: 15px/1.6 system-ui, sans-serif;
       }
       main {
-        max-width: 62rem;
+        max-width: 64rem;
         margin: 0 auto;
         display: grid;
         gap: 1.5rem;
-        grid-template-columns: minmax(0, 1fr) 17rem;
+        grid-template-columns: minmax(0, 1fr) 17.5rem;
       }
-      header {
-        grid-column: 1 / -1;
-      }
-      h1 {
-        margin: 0 0 0.3rem;
-        font-size: 1.6rem;
-        letter-spacing: -0.01em;
-      }
-      header p {
-        margin: 0;
-        color: var(--dim);
-        max-width: 46rem;
-      }
-      figure {
-        margin: 0;
-      }
-      canvas {
+      header { grid-column: 1 / -1; }
+      h1 { margin: 0 0 0.3rem; font-size: 1.6rem; letter-spacing: -0.01em; }
+      header p { margin: 0; color: var(--dim); max-width: 46rem; }
+      figure { margin: 0; }
+      .stage { position: relative; }
+      canvas.view {
         display: block;
         width: 100%;
         aspect-ratio: 1;
@@ -66,16 +56,39 @@
         border: 1px solid var(--line);
         border-radius: 4px;
       }
-      figcaption {
-        margin-top: 0.5rem;
-        font-size: 12px;
-        color: var(--dim);
+      #gl { display: none; cursor: grab; }
+      #gl:active { cursor: grabbing; }
+      body.three #flat { display: none; }
+      body.three #gl { display: block; }
+      figcaption { margin-top: 0.5rem; font-size: 12px; color: var(--dim); }
+      #outcome {
+        margin-top: 0.6rem;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--hot);
+        border-radius: 3px;
+        background: var(--panel);
+        font-size: 13.5px;
+        display: none;
       }
-      aside {
+      #outcome.show { display: block; }
+      #outcome b { color: var(--hot); }
+      .timeline {
+        margin-top: 0.75rem;
         display: flex;
-        flex-direction: column;
-        gap: 1rem;
+        align-items: center;
+        gap: 0.75rem;
       }
+      .timeline input[type="range"] { flex: 1; margin: 0; }
+      .timeline button { flex: none; width: 5.5rem; }
+      .timeline .clock {
+        font-family: ui-monospace, monospace;
+        font-size: 12.5px;
+        font-variant-numeric: tabular-nums;
+        color: var(--dim);
+        white-space: nowrap;
+      }
+      aside { display: flex; flex-direction: column; gap: 1rem; }
       fieldset {
         border: 1px solid var(--line);
         border-radius: 4px;
@@ -90,29 +103,11 @@
         text-transform: uppercase;
         padding: 0 0.4rem;
       }
-      label {
-        display: block;
-        font-size: 13px;
-        color: var(--dim);
-        margin-top: 0.7rem;
-      }
-      label:first-of-type {
-        margin-top: 0;
-      }
-      label span {
-        color: var(--ink);
-        float: right;
-        font-variant-numeric: tabular-nums;
-      }
-      input[type="range"] {
-        width: 100%;
-        margin: 0.3rem 0 0;
-        accent-color: var(--hot);
-      }
-      .row {
-        display: flex;
-        gap: 0.5rem;
-      }
+      label { display: block; font-size: 13px; color: var(--dim); margin-top: 0.7rem; }
+      label:first-of-type { margin-top: 0; }
+      label span { color: var(--ink); float: right; font-variant-numeric: tabular-nums; }
+      input[type="range"] { width: 100%; margin: 0.3rem 0 0; accent-color: var(--hot); }
+      .row { display: flex; gap: 0.5rem; }
       button {
         flex: 1;
         font: inherit;
@@ -123,24 +118,19 @@
         border-radius: 3px;
         cursor: pointer;
       }
-      button:hover:not(:disabled) {
-        border-color: var(--hot);
-      }
-      button:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
+      button:hover:not(:disabled) { border-color: var(--hot); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button.on { background: var(--hot); border-color: var(--hot); color: #1a1210; }
       .check {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        margin-top: 0.9rem;
+        margin-top: 0.8rem;
         font-size: 13px;
         color: var(--dim);
       }
-      .check input {
-        accent-color: var(--hot);
-      }
+      .check input { accent-color: var(--hot); }
+      .check label { margin: 0; }
       dl {
         margin: 0;
         display: grid;
@@ -149,33 +139,12 @@
         font-family: ui-monospace, monospace;
         font-size: 12.5px;
       }
-      dt {
-        color: var(--dim);
-      }
-      dd {
-        margin: 0;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-      .key {
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        font-size: 12.5px;
-        color: var(--dim);
-        margin-top: 0.4rem;
-      }
-      .sw {
-        width: 12px;
-        height: 12px;
-        border-radius: 2px;
-        flex: none;
-      }
-      @media (max-width: 48rem) {
-        main {
-          grid-template-columns: minmax(0, 1fr);
-        }
-      }
+      dt { color: var(--dim); }
+      dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+      .key { display: flex; align-items: center; gap: 0.45rem; font-size: 12.5px; color: var(--dim); margin-top: 0.4rem; }
+      .sw { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+      .hint { font-size: 12px; color: var(--dim); margin: 0.5rem 0 0; }
+      @media (max-width: 50rem) { main { grid-template-columns: minmax(0, 1fr); } }
     </style>
   </head>
   <body>
@@ -184,80 +153,111 @@
         <h1>ForeFire in the browser</h1>
         <p>
           A 4 km square of the Ajaccio hinterland, Corsica — the site of the
-          repository's own test case. The fuel map is classified from the
-          satellite imagery in this tab, the solver runs in a worker beside it,
-          and the wind below is live, so steering it redirects the fire on the
-          next step.
+          repository's own test case. The fuel map and the terrain are decoded
+          from map tiles in this tab, and Rothermel's rate of spread reads both,
+          so the fire runs uphill and stops at bare ground. The whole run is
+          computed up front — a fraction of a second to a few seconds — and the
+          timeline scrubs through it.
         </p>
       </header>
 
       <figure>
-        <canvas id="view" width="900" height="900"></canvas>
-        <figcaption id="credit">Loading imagery…</figcaption>
+        <div class="stage">
+          <canvas id="flat" class="view" width="1024" height="1024"></canvas>
+          <canvas id="gl" class="view" width="1024" height="1024"></canvas>
+        </div>
+
+        <div class="timeline">
+          <button id="playback" disabled>Play</button>
+          <input id="scrub" type="range" min="0" max="0" value="0" step="1" disabled />
+          <span class="clock" id="clock">—</span>
+        </div>
+
+        <div id="outcome"></div>
+        <figcaption id="credit">Loading imagery and terrain…</figcaption>
       </figure>
 
       <aside>
         <fieldset>
           <legend>Run</legend>
           <div class="row">
-            <button id="play" disabled>Loading engine…</button>
-            <button id="reset" disabled>Reset</button>
+            <button id="simulate" disabled>Simulate</button>
           </div>
           <label
-            >Step length <span id="dtOut">15 s</span>
-            <input id="dt" type="range" min="5" max="60" step="5" value="15" />
+            >Step length <span id="dtOut">30 s</span>
+            <input id="dt" type="range" min="10" max="120" step="10" value="30" />
+          </label>
+          <label
+            >Max steps <span id="stepsOut">400</span>
+            <input id="steps" type="range" min="50" max="800" step="50" value="400" />
           </label>
         </fieldset>
 
         <fieldset>
           <legend>Wind</legend>
+          <div class="row">
+            <button id="modeFixed" class="on">Fixed</button>
+            <button id="modeTurning">Turning</button>
+          </div>
           <label
-            >Speed <span id="speedOut">20 m/s</span>
-            <input id="speed" type="range" min="0" max="40" step="1" value="20" />
+            >Speed <span id="speedOut">8 m/s</span>
+            <input id="speed" type="range" min="0" max="30" step="1" value="8" />
           </label>
           <label
             >Direction <span id="dirOut">0°</span>
-            <input id="dir" type="range" min="0" max="359" step="1" value="0" />
+            <input id="dir" type="range" min="0" max="359" step="5" value="0" />
           </label>
-          <div class="check">
-            <input id="turning" type="checkbox" checked />
-            <label for="turning" style="margin: 0">turn 12° per step</label>
-          </div>
+          <label id="turnRow" hidden
+            >Turn per step <span id="turnOut">6°</span>
+            <input id="turn" type="range" min="1" max="24" step="1" value="6" />
+          </label>
+          <p class="hint">0° is due east; the fire runs downwind.</p>
         </fieldset>
 
         <fieldset>
-          <legend>Fuel</legend>
-          <div class="check" style="margin-top: 0">
-            <input id="showFuel" type="checkbox" />
-            <label for="showFuel" style="margin: 0">show classified map</label>
+          <legend>View</legend>
+          <div class="row">
+            <button id="view2d" class="on">2D map</button>
+            <button id="view3d">3D terrain</button>
           </div>
-          <label
-            >Overlay opacity <span id="fuelAlphaOut">55%</span>
-            <input id="fuelAlpha" type="range" min="10" max="100" step="5" value="55" />
+          <label id="exagRow" hidden
+            >Vertical exaggeration <span id="exagOut">2.5×</span>
+            <input id="exag" type="range" min="1" max="6" step="0.5" value="2.5" />
           </label>
+          <div class="check">
+            <input id="showFuel" type="checkbox" />
+            <label for="showFuel">show fuel classes</label>
+          </div>
+          <div class="check">
+            <input id="showRelief" type="checkbox" checked />
+            <label for="showRelief">relief shading</label>
+          </div>
+          <div class="check">
+            <input id="showTrail" type="checkbox" checked />
+            <label for="showTrail">perimeter history</label>
+          </div>
           <div id="legend"></div>
+          <p class="hint" id="glHint" hidden>Drag to orbit, scroll to zoom.</p>
         </fieldset>
 
         <fieldset>
           <legend>State</legend>
           <dl>
-            <dt>sim time</dt>
-            <dd id="mTime">0 s</dd>
-            <dt>steps</dt>
-            <dd id="mStep">0</dd>
-            <dt>front nodes</dt>
-            <dd id="mNodes">0</dd>
-            <dt>fronts</dt>
-            <dd id="mFronts">0</dd>
-            <dt>ms / step</dt>
-            <dd id="mMs">—</dd>
+            <dt>sim time</dt><dd id="mTime">—</dd>
+            <dt>step</dt><dd id="mStep">—</dd>
+            <dt>burnt area</dt><dd id="mArea">—</dd>
+            <dt>front nodes</dt><dd id="mNodes">—</dd>
+            <dt>fronts</dt><dd id="mFronts">—</dd>
+            <dt>elevation</dt><dd id="mElev">—</dd>
+            <dt>compute</dt><dd id="mWall">—</dd>
           </dl>
         </fieldset>
       </aside>
     </main>
 
     <script type="module">
-      import { buildLandscape, fuelOverlay, FUELS, FUELS_TABLE } from "./landscape.mjs";
+      import { buildLandscape, fuelOverlay, hillshade, FUELS, FUELS_TABLE } from "./landscape.mjs";
+      import { createTerrainView } from "./terrain3d.mjs";
 
       const SITE = {
         // startFire[lonlat=(8.70, 41.952, 0)] in tests/runff/run.ff.
@@ -265,98 +265,193 @@
         lat: 41.952,
         side: 4000, // metres
         zoom: 15,
-        grid: 256, // fuel cells per side — 15.6 m at this size
+        grid: 256, // fuel and elevation cells per side — 15.6 m each
       };
 
       const $ = (id) => document.getElementById(id);
-      const canvas = $("view");
-      const ctx = canvas.getContext("2d");
+      const flat = $("flat");
+      const ctx = flat.getContext("2d");
       const worker = new Worker("./worker.mjs", { type: "module" });
 
-      let latest = null; // most recent frame from the worker
-      let trail = []; // past perimeters, drawn fading
-      let running = false;
-      let imagery = null; // satellite canvas, or null when offline
+      let land = null; // imagery, fuel, altitude
       let overlay = null; // classified fuel raster
+      let relief = null; // hillshade raster
+      let timeline = null; // { frames, outcome, ... }
+      let cursor = 0;
+      let playing = false;
+      let terrain = null; // 3D view, once built
+      let engineReady = false;
+      let dirty = true; // repaint needed
 
-      // Fuel legend, built from the same table the engine is given.
+      const wind = { speed: 8, angleDeg: 0, turning: false, turnPerStep: 6 };
+
       $("legend").innerHTML = FUELS.map(
         (f) =>
           `<div class="key"><span class="sw" style="background:rgb(${f.rgb})"></span>` +
-          `${f.label} — ROS ×${f.vv}</div>`
+          `${f.label} <span style="opacity:.7">— ${f.note}</span></div>`
       ).join("");
 
-      // Imagery and engine load in parallel; whichever finishes first waits.
+      // ---- landscape -------------------------------------------------------
+
       buildLandscape(SITE)
-        .then((land) => {
-          imagery = land.image;
+        .then((result) => {
+          land = result;
           overlay = fuelOverlay(land.fuel, land.nx);
+          relief = hillshade(land.altitude, land.nx, SITE.side / land.nx);
           const total = land.nx * land.ny;
           const pct = (n) => Math.round((100 * n) / total);
           $("credit").innerHTML =
-            `Imagery © Esri, Maxar, Earthstar Geographics. ` +
-            `Fuel classified in-browser at ${land.metresPerPx.toFixed(1)} m/px: ` +
-            `${pct(land.counts[1])}% dense, ${pct(land.counts[2])}% sparse, ` +
-            `${pct(land.counts[3])}% non-burnable.`;
-          worker.postMessage(
-            {
-              type: "landscape",
-              fuel: land.fuel,
-              nx: land.nx,
-              ny: land.ny,
-              side: SITE.side,
-              fuelsTable: FUELS_TABLE,
-            },
-            [land.fuel.buffer]
-          );
+            "Imagery © Esri, Maxar, Earthstar Geographics · elevation from Terrarium/SRTM. " +
+            `Decoded in-browser at ${land.metresPerPx.toFixed(1)} m/px: ` +
+            FUELS.map((f) => `${pct(land.counts[f.index])}% ${f.label}`).join(", ") +
+            `; ${land.elevation.lo.toFixed(0)}–${land.elevation.hi.toFixed(0)} m elevation.`;
+          $("mElev").textContent =
+            `${land.elevation.lo.toFixed(0)}–${land.elevation.hi.toFixed(0)} m`;
+
+          // Copied rather than transferred: the elevation field is also the 3D
+          // view's mesh, and transferring would detach it here. Under a
+          // megabyte, cloned once.
+          worker.postMessage({
+            type: "landscape",
+            fuel: land.fuel,
+            altitude: land.altitude,
+            nx: land.nx,
+            ny: land.ny,
+            side: SITE.side,
+            fuelsTable: FUELS_TABLE,
+            defaultFuel: FUELS[0].index,
+          });
+          dirty = true;
+          maybeEnable();
         })
         .catch((err) => {
-          // Offline, or the tile host is unreachable. The worker keeps its
-          // uniform-fuel default, so the demo still runs.
-          console.warn("imagery unavailable:", err);
+          console.warn("map tiles unavailable:", err);
           $("credit").textContent =
-            "Imagery unavailable — running on uniform fuel instead.";
-          $("showFuel").disabled = true;
+            "Map tiles unavailable — falling back to uniform fuel on flat ground.";
+          for (const id of ["showFuel", "showRelief", "view3d"]) $(id).disabled = true;
+          maybeEnable();
         });
+
+      function maybeEnable() {
+        if (engineReady) $("simulate").disabled = false;
+      }
+
+      // ---- worker ----------------------------------------------------------
 
       worker.onmessage = ({ data }) => {
         if (data.type === "ready") {
-          $("play").textContent = "Run";
-          $("play").disabled = false;
-          $("reset").disabled = false;
+          engineReady = true;
+          maybeEnable();
           return;
         }
-        if (data.type !== "frame") return;
-
-        if (data.step === 0) trail = [];
-        else if (latest) trail.push(latest.fronts);
-        // The trail is decoration, not history — cap it so a long run does not
-        // grow without bound.
-        if (trail.length > 40) trail.shift();
-        latest = data;
+        if (data.type === "failed") {
+          $("outcome").className = "show";
+          $("outcome").innerHTML = `<b>Simulation failed:</b> ${data.message}`;
+          $("simulate").disabled = false;
+          $("simulate").textContent = "Simulate";
+          return;
+        }
+        if (data.type === "timeline") {
+          timeline = data;
+          cursor = 0;
+          $("scrub").max = String(data.frames.length - 1);
+          $("scrub").value = "0";
+          $("scrub").disabled = false;
+          $("playback").disabled = false;
+          $("simulate").disabled = false;
+          $("simulate").textContent = "Simulate";
+          $("mWall").textContent = `${data.wallMs.toFixed(0)} ms`;
+          showOutcome(data);
+          play(true);
+        }
       };
 
-      // Drawing is decoupled from stepping: the worker posts whenever a step
-      // lands, the canvas repaints on its own rhythm.
-      function frame() {
-        if (latest) draw(latest);
-        requestAnimationFrame(frame);
+      const OUTCOMES = {
+        "left-domain": (t, a) =>
+          `<b>Fire reached the edge of the domain</b> at ${clock(t)}, having burnt ${a}. ` +
+          `The simulation stops there — beyond the 4 km square there is no data to burn.`,
+        "burnt-out": (t, a) =>
+          `<b>Fire went out</b> at ${clock(t)}, having burnt ${a}. ` +
+          `Nothing left within reach would carry it.`,
+        stalled: (t, a) =>
+          `<b>Fire stopped spreading</b> at ${clock(t)} at ${a}. ` +
+          `The perimeter is hemmed in by ground that will not burn.`,
+        "never-caught": (t) =>
+          `<b>The fire never caught.</b> The ignition point is on ground with no fuel bed — ` +
+          `move the wind up, or pick a run where it starts in vegetation.`,
+        "step-limit": (t, a) =>
+          `<b>Still burning</b> at ${clock(t)} after the step limit, at ${a}. ` +
+          `Raise "max steps" to follow it further.`,
+      };
+
+      function showOutcome(data) {
+        const ha = `${(data.peakArea / 1e4).toFixed(0)} ha`;
+        const render = OUTCOMES[data.outcome.kind];
+        $("outcome").className = "show";
+        $("outcome").innerHTML = render
+          ? render(data.outcome.t, ha)
+          : `Run ended: ${data.outcome.kind}`;
       }
-      requestAnimationFrame(frame);
 
-      function draw(f) {
-        const size = canvas.width;
-        const s = size / f.domain;
+      // ---- playback --------------------------------------------------------
 
-        if (imagery) ctx.drawImage(imagery, 0, 0, size, size);
+      const clock = (s) => {
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+      };
+
+      function play(on) {
+        playing = on;
+        $("playback").textContent = on ? "Pause" : "Play";
+        $("playback").classList.toggle("on", on);
+      }
+
+      let lastAdvance = 0;
+      function loop(now) {
+        if (playing && timeline && now - lastAdvance > 60) {
+          lastAdvance = now;
+          cursor = cursor + 1 >= timeline.frames.length ? 0 : cursor + 1;
+          $("scrub").value = String(cursor);
+          dirty = true;
+        }
+        if (dirty) {
+          dirty = false;
+          paint();
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      // ---- drawing ---------------------------------------------------------
+
+      function paint() {
+        drawMap();
+        updateReadout();
+        if (terrain && document.body.classList.contains("three")) {
+          terrain.setMap(flat);
+          terrain.render();
+        }
+      }
+
+      function drawMap() {
+        const size = flat.width;
+        if (land && land.image) ctx.drawImage(land.image, 0, 0, size, size);
         else {
           ctx.fillStyle = "#0b0908";
           ctx.fillRect(0, 0, size, size);
         }
 
+        if (relief && $("showRelief").checked) {
+          ctx.save();
+          ctx.globalCompositeOperation = "multiply";
+          ctx.drawImage(relief, 0, 0, size, size);
+          ctx.restore();
+        }
+
         if (overlay && $("showFuel").checked) {
           ctx.save();
-          ctx.globalAlpha = +$("fuelAlpha").value / 100;
+          ctx.globalAlpha = 0.55;
           // Nearest-neighbour: these are classes, and smoothing them invents
           // fuel types that are not in the table.
           ctx.imageSmoothingEnabled = false;
@@ -364,6 +459,8 @@
           ctx.restore();
         }
 
+        if (!timeline) return;
+        const s = size / timeline.domain;
         // Canvas y grows downward, the domain's grows upward.
         const path = (coords) => {
           const p = new Path2D();
@@ -376,29 +473,34 @@
           return p;
         };
 
-        ctx.lineWidth = 1;
-        trail.forEach((fronts, i) => {
-          ctx.strokeStyle = `rgba(255,122,26,${0.06 + (i / trail.length) * 0.24})`;
-          fronts.forEach((c) => ctx.stroke(path(c)));
-        });
+        if ($("showTrail").checked) {
+          ctx.lineWidth = 1;
+          const first = Math.max(0, cursor - 60);
+          for (let i = first; i < cursor; i += 2) {
+            const age = (i - first) / Math.max(1, cursor - first);
+            ctx.strokeStyle = `rgba(255,122,26,${0.05 + age * 0.25})`;
+            for (const c of timeline.frames[i].fronts) ctx.stroke(path(c));
+          }
+        }
 
-        ctx.lineWidth = 2;
+        const frame = timeline.frames[cursor];
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = "#ffc47a";
-        ctx.fillStyle = "rgba(255,90,10,0.28)";
-        f.fronts.forEach((c) => {
+        ctx.fillStyle = "rgba(255,80,10,0.32)";
+        for (const c of frame.fronts) {
           const p = path(c);
           ctx.fill(p);
           ctx.stroke(p);
-        });
+        }
 
-        drawWind(f.wind, size);
+        drawWind(frame.windDeg, size);
       }
 
-      function drawWind({ deg, speed }, size) {
-        if (speed === 0) return;
-        const cx = size - 84;
-        const cy = 84;
-        const r = 34 * (0.35 + (0.65 * speed) / 40);
+      function drawWind(deg, size) {
+        if (!wind.speed) return;
+        const cx = size - 96;
+        const cy = 96;
+        const r = 38 * (0.35 + (0.65 * wind.speed) / 30);
         const rad = (deg * Math.PI) / 180;
         const dx = Math.cos(rad);
         const dy = -Math.sin(rad);
@@ -407,76 +509,147 @@
         // A disc behind it, or the arrow disappears over pale ground.
         ctx.fillStyle = "rgba(20,16,14,0.55)";
         ctx.beginPath();
-        ctx.arc(cx, cy, 46, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, 52, 0, 2 * Math.PI);
         ctx.fill();
-        ctx.strokeStyle = "rgba(237,230,225,0.85)";
-        ctx.fillStyle = "rgba(237,230,225,0.85)";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(237,230,225,0.9)";
+        ctx.fillStyle = "rgba(237,230,225,0.9)";
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.moveTo(cx - dx * r, cy - dy * r);
         ctx.lineTo(cx + dx * r, cy + dy * r);
         ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(cx + dx * r, cy + dy * r);
-        ctx.lineTo(cx + dx * (r - 12) - dy * 7, cy + dy * (r - 12) + dx * 7);
-        ctx.lineTo(cx + dx * (r - 12) + dy * 7, cy + dy * (r - 12) - dx * 7);
+        ctx.lineTo(cx + dx * (r - 13) - dy * 8, cy + dy * (r - 13) + dx * 8);
+        ctx.lineTo(cx + dx * (r - 13) + dy * 8, cy + dy * (r - 13) - dx * 8);
         ctx.fill();
         ctx.restore();
       }
 
-      // Metrics update on their own timer: at 60 fps the numbers would be
-      // unreadable, and they only change when a step lands anyway.
-      setInterval(() => {
-        if (!latest) return;
-        $("mTime").textContent = `${latest.t.toFixed(0)} s`;
-        $("mStep").textContent = latest.step;
-        $("mNodes").textContent = latest.nodes;
-        $("mFronts").textContent = latest.fronts.length;
-        $("mMs").textContent = latest.ms ? latest.ms.toFixed(0) : "—";
-      }, 250);
+      function updateReadout() {
+        if (!timeline) return;
+        const f = timeline.frames[cursor];
+        $("clock").textContent = `${clock(f.t)} · ${cursor + 1}/${timeline.frames.length}`;
+        $("mTime").textContent = clock(f.t);
+        $("mStep").textContent = f.step;
+        $("mArea").textContent = `${(f.area / 1e4).toFixed(1)} ha`;
+        $("mNodes").textContent = f.nodes;
+        $("mFronts").textContent = f.fronts.length;
+      }
 
-      $("play").addEventListener("click", () => {
-        running = !running;
-        worker.postMessage({ type: running ? "play" : "pause" });
-        $("play").textContent = running ? "Pause" : "Run";
-      });
+      // ---- controls --------------------------------------------------------
 
-      $("reset").addEventListener("click", () => {
-        running = false;
-        $("play").textContent = "Run";
-        latest = null;
-        trail = [];
-        worker.postMessage({ type: "pause" });
-        worker.postMessage({ type: "reset" });
-      });
-
-      const sendWind = () =>
+      $("simulate").addEventListener("click", () => {
+        $("simulate").disabled = true;
+        $("simulate").textContent = "Computing…";
+        $("outcome").className = "";
+        play(false);
         worker.postMessage({
-          type: "wind",
-          wind: {
-            speed: +$("speed").value,
-            angleDeg: +$("dir").value,
-            turning: $("turning").checked,
+          type: "simulate",
+          run: {
+            steps: +$("steps").value,
+            dt: +$("dt").value,
+            ignition: [SITE.side / 2, SITE.side / 2],
+            wind: { ...wind },
           },
         });
+      });
+
+      $("playback").addEventListener("click", () => play(!playing));
+      $("scrub").addEventListener("input", () => {
+        cursor = +$("scrub").value;
+        play(false);
+        dirty = true;
+      });
+
+      $("dt").addEventListener("input", () => ($("dtOut").textContent = `${$("dt").value} s`));
+      $("steps").addEventListener("input", () => ($("stepsOut").textContent = $("steps").value));
+
+      // Wind mode is two explicit buttons rather than a checkbox beside the
+      // direction slider: with a checkbox, choosing 0° fired no input event
+      // (the slider was already there), the turning mode stayed on, and the
+      // fire went its own way regardless of what the dial said.
+      function setWindMode(turning) {
+        wind.turning = turning;
+        $("modeFixed").classList.toggle("on", !turning);
+        $("modeTurning").classList.toggle("on", turning);
+        $("turnRow").hidden = !turning;
+      }
+      $("modeFixed").addEventListener("click", () => setWindMode(false));
+      $("modeTurning").addEventListener("click", () => setWindMode(true));
 
       $("speed").addEventListener("input", () => {
-        $("speedOut").textContent = `${$("speed").value} m/s`;
-        sendWind();
+        wind.speed = +$("speed").value;
+        $("speedOut").textContent = `${wind.speed} m/s`;
       });
       $("dir").addEventListener("input", () => {
-        $("dirOut").textContent = `${$("dir").value}°`;
-        $("turning").checked = false;
-        sendWind();
+        wind.angleDeg = +$("dir").value;
+        $("dirOut").textContent = `${wind.angleDeg}°`;
       });
-      $("turning").addEventListener("change", sendWind);
-      $("dt").addEventListener("input", () => {
-        $("dtOut").textContent = `${$("dt").value} s`;
-        worker.postMessage({ type: "dt", dt: +$("dt").value });
+      $("turn").addEventListener("input", () => {
+        wind.turnPerStep = +$("turn").value;
+        $("turnOut").textContent = `${wind.turnPerStep}°`;
       });
-      $("fuelAlpha").addEventListener("input", () => {
-        $("fuelAlphaOut").textContent = `${$("fuelAlpha").value}%`;
+
+      for (const id of ["showFuel", "showRelief", "showTrail"])
+        $(id).addEventListener("change", () => (dirty = true));
+
+      // ---- 2D / 3D ---------------------------------------------------------
+
+      function setView(three) {
+        if (three && !terrain) {
+          if (!land || !land.altitude) return; // no terrain without tiles
+          try {
+            terrain = createTerrainView($("gl"), {
+              altitude: land.altitude,
+              grid: land.nx,
+              side: SITE.side,
+            });
+          } catch (err) {
+            console.warn("3D unavailable:", err);
+            $("credit").textContent += " 3D view unavailable: " + err.message;
+            $("view3d").disabled = true;
+            return;
+          }
+        }
+        document.body.classList.toggle("three", three);
+        $("view2d").classList.toggle("on", !three);
+        $("view3d").classList.toggle("on", three);
+        $("exagRow").hidden = !three;
+        $("glHint").hidden = !three;
+        dirty = true;
+      }
+      $("view2d").addEventListener("click", () => setView(false));
+      $("view3d").addEventListener("click", () => setView(true));
+
+      $("exag").addEventListener("input", () => {
+        $("exagOut").textContent = `${$("exag").value}×`;
+        if (terrain) terrain.setExaggeration(+$("exag").value);
+        dirty = true;
       });
+
+      let drag = null;
+      $("gl").addEventListener("pointerdown", (e) => {
+        drag = { x: e.clientX, y: e.clientY };
+        $("gl").setPointerCapture(e.pointerId);
+      });
+      $("gl").addEventListener("pointermove", (e) => {
+        if (!drag || !terrain) return;
+        terrain.orbit((e.clientX - drag.x) * 0.008, (e.clientY - drag.y) * 0.006);
+        drag = { x: e.clientX, y: e.clientY };
+        dirty = true;
+      });
+      $("gl").addEventListener("pointerup", () => (drag = null));
+      $("gl").addEventListener(
+        "wheel",
+        (e) => {
+          if (!terrain) return;
+          e.preventDefault();
+          terrain.zoom(e.deltaY > 0 ? 1.08 : 0.93);
+          dirty = true;
+        },
+        { passive: false }
+      );
     </script>
   </body>
 </html>

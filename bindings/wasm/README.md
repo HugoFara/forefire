@@ -61,38 +61,73 @@ the directory, since a `file://` page can neither fetch the `.wasm` nor start a
 module worker:
 
 ```sh
-cp bindings/wasm/{index.html,worker.mjs,landscape.mjs} bin/
+cp bindings/wasm/{index.html,worker.mjs,landscape.mjs,terrain3d.mjs} bin/
 python3 -m http.server -d bin
 ```
 
-The page runs the solver in a worker (`worker.mjs`) and repaints as each step
-lands, so the fire evolves live and the wind can be steered mid-run. Off the
-main thread is not optional: a step costs 15 ms early and hundreds once the
-front carries a few thousand nodes, which inline would freeze the tab.
+The solver runs in a worker (`worker.mjs`), which computes the **whole run up
+front** — a few hundred milliseconds for a modest fire, a few seconds for one
+that burns 800 ha — and the page then scrubs the result on a timeline. Off the
+main thread is what keeps the page answering while that happens.
 
-### The fuel map comes from the imagery
+### The landscape comes from map tiles
 
-`landscape.mjs` fetches satellite tiles for a 4 km square of the Ajaccio
-hinterland — the site of `tests/runff/run.ff` — draws them to a canvas,
-and classifies the pixels into fuel indices by excess green,
-`g - (r + b) / 2`:
+`landscape.mjs` fetches two tiled layers for a 4 km square of the Ajaccio
+hinterland — the site of `tests/runff/run.ff` — and decodes both into layer
+arrays. No NetCDF, no GIS stack: tiles in, an `Int32Array` and a
+`Float64Array` out, straight into `addIndexLayer` and `addScalarLayer`.
 
-| Class | Cut | `vv_coeff` | Share of the site |
+**Fuel**, from satellite imagery, classified by excess green `g - (r+b)/2`
+into three rows of the repository's own `tests/runff/fuels.csv`:
+
+| Class | Cut | `fuels.csv` row | Share of the site |
 | --- | --- | --- | --- |
-| dense vegetation | ≥ 20 | 1.0 | ~44% |
-| sparse / grass | ≥ 10 | 0.45 | ~32% |
-| bare, built, water | below | 0.0 | ~24% |
+| shrub / maquis | ≥ 20 | index 5, bed depth 0.6 m | ~44% |
+| sparse / grass | ≥ 10 | index 4, bed depth 0.19 m | ~32% |
+| bare, built, water | below | index 0, no fuel bed | ~24% |
 
-It is greenness, not a land-cover product, but it makes the imagery
-load-bearing rather than decorative: `ROS = vv_coeff × normal wind`, so
-`vv_coeff = 0` is a barrier, and the fire visibly slows on sparse ground and
-stops at clearings, tracks and rooftops. Verified against a synthetic
-non-burnable ring: the front reached 901 m against a barrier at 880 m, one
-15.6 m fuel cell of overshoot.
+**Elevation**, from Terrarium-encoded SRTM, `r*256 + g + b/256 - 32768` metres.
+The site runs from 11 m to 761 m.
 
-This is the whole "no NetCDF, no GIS" story in one file — tiles in, an
-`Int32Array` out, straight into `addIndexLayer`. If the tile host is
-unreachable the page falls back to uniform fuel and says so.
+Both are load-bearing, because the model is **Rothermel** with the parameters
+from `tests/runff/params.ff`, and its rate of spread reads the fuel bed and the
+slope. Index 0 has no fuel bed, so the fire stops at clearings, tracks and
+rooftops. And on a bare slope with no wind at all, ten minutes of spread grows
+with the grade while the downhill side stays put:
+
+| slope | uphill | downhill |
+| --- | --- | --- |
+| flat | 47 m | 45 m |
+| 30% | 99 m | 45 m |
+| 60% | 210 m | 43 m |
+
+> **Layer order matters.** The `altitude` layer must be registered *before* the
+> propagation layer. `DataBroker` derives the slope layer at the moment a layer
+> named `altitude` is registered; a model that asks for `slope` first gets a
+> constant zero-altitude stand-in, and the terrain silently does nothing.
+
+If the tile hosts are unreachable the page falls back to uniform fuel on flat
+ground and says so.
+
+### Knowing when the fire stops
+
+A fire that stops does not leave a stationary perimeter behind: ForeFire
+discards the front and `print[]` returns nothing at all, which on a canvas is
+indistinguishable from a bug. The worker detects the front list emptying, drops
+that frame, and reports why it ended — `left-domain` if the last live front was
+against the boundary, `burnt-out` otherwise. A slower death, where the
+perimeter survives but stops advancing, is caught by a burnt-area plateau over
+a twelve-step window (`stalled`), and an ignition on bare ground is reported as
+`never-caught` rather than as a fire that stopped.
+
+### 3D terrain
+
+`terrain3d.mjs` draws the elevation field as a textured mesh in raw WebGL — no
+library, since a heightfield with one directional light is not worth a megabyte
+of dependency. The texture is whatever the 2D view painted, so the two views
+cannot disagree. Drag to orbit, scroll to zoom, and the vertical exaggeration
+is adjustable because 750 m of relief over 4 km is subtle at true scale. The
+view degrades to 2D if WebGL is unavailable.
 
 ## The API
 
