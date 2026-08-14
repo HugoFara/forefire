@@ -510,6 +510,7 @@
 
       let lastAdvance = 0;
       function loop(now) {
+        stepTilt(now);
         if (playing && timeline && now - lastAdvance > 60) {
           lastAdvance = now;
           cursor = cursor + 1 >= timeline.frames.length ? 0 : cursor + 1;
@@ -527,6 +528,9 @@
       // ---- drawing ---------------------------------------------------------
 
       function paint() {
+        // The 2D canvas is drawn either way: in 3D it is hidden, but it is
+        // still the texture the mesh wears, which is why the two views can
+        // never disagree about what is on the ground.
         drawMap();
         updateReadout();
         if (terrain && document.body.classList.contains("three")) {
@@ -816,6 +820,16 @@
 
       // ---- 2D / 3D ---------------------------------------------------------
 
+      // The two views are one renderer at two camera poses, so switching is a
+      // camera move rather than a swap. The GL canvas takes over while still
+      // in the flat pose, where it draws what the 2D canvas draws, and only
+      // then tilts up — so the handover itself is never visible.
+      const TILT_MS = 750;
+      // Starts flat, because the page starts on the 2D map. Starting at 1
+      // would make the first switch to 3D a jump cut, the very thing this is
+      // here to avoid.
+      let tilt = { from: 0, to: 0, started: 0, value: 0 };
+
       function setView(three) {
         if (three && !terrain) {
           if (!land || !land.altitude) return; // no terrain without tiles
@@ -825,6 +839,8 @@
               grid: land.nx,
               side: land.site.side,
             });
+            terrain.setExaggeration(+$("exag").value);
+            terrain.setTransition(tilt.value);
           } catch (err) {
             console.warn("3D unavailable:", err);
             $("credit").textContent += " 3D view unavailable: " + err.message;
@@ -832,12 +848,31 @@
             return;
           }
         }
-        document.body.classList.toggle("three", three);
         $("view2d").classList.toggle("on", !three);
         $("view3d").classList.toggle("on", three);
         $("exagRow").hidden = !three;
         $("glHint").hidden = !three;
+        // Hand over to GL immediately on the way out, and hold it until the
+        // camera is flat again on the way back.
+        if (three) document.body.classList.add("three");
+        tilt = { from: tilt.value, to: three ? 1 : 0, started: performance.now() };
         dirty = true;
+      }
+
+      // Ease in and out, so the tilt starts and finishes without a lurch.
+      const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+      function stepTilt(now) {
+        if (!terrain || tilt.from === tilt.to) return;
+        const p = Math.min(1, (now - tilt.started) / TILT_MS);
+        tilt.value = tilt.from + (tilt.to - tilt.from) * easeInOut(p);
+        terrain.setTransition(tilt.value);
+        dirty = true;
+        if (p === 1) {
+          tilt.from = tilt.to;
+          tilt.value = tilt.to;
+          if (tilt.to === 0) document.body.classList.remove("three");
+        }
       }
       $("view2d").addEventListener("click", () => setView(false));
       $("view3d").addEventListener("click", () => setView(true));

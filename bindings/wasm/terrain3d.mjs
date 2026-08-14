@@ -92,6 +92,40 @@ function lookAt(eye, target, up) {
 	]);
 }
 
+const ORBIT_FOV = Math.PI / 4;
+// Not π/2: straight down puts the view direction on the up vector and lookAt
+// divides by zero. A third of a degree short of vertical reads as flat and
+// stays conditioned.
+const FLAT_ELEVATION = Math.PI / 2 - 0.005;
+// A long lens from far away is orthographic in all but name, which is what
+// makes the flat pose match the plain 2D map rather than merely resemble it.
+const FLAT_FOV = 0.12;
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/*!
+ * Blend between the flat map pose and the orbit pose.
+ *
+ * `t` of 0 looks straight down through a near-orthographic lens, framed so the
+ * mesh's unit square exactly fills a square viewport — pixel for pixel what the
+ * 2D canvas draws, which is what lets the two views swap unseen. `t` of 1 is
+ * the orbit the user has dragged to. Everything in between is a camera move,
+ * so the transition needs no cross-fade and no second renderer.
+ */
+export function blendCamera({ azimuth, elevation, distance, exaggeration }, t) {
+	const fov = lerp(FLAT_FOV, ORBIT_FOV, t);
+	// Half the square subtends half the vertical field of view: the exact fit.
+	const flatDistance = 0.5 / Math.tan(fov / 2);
+	return {
+		// North-up at the flat end, or the map would land rotated.
+		azimuth: lerp(0, azimuth, t),
+		elevation: lerp(FLAT_ELEVATION, elevation, t),
+		distance: lerp(flatDistance, distance, t),
+		exaggeration: exaggeration * t,
+		fov,
+	};
+}
+
 /*!
  * The full model-view-projection for a camera orbiting the origin.
  *
@@ -99,14 +133,14 @@ function lookAt(eye, target, up) {
  * mesh and confirm they land inside the clip volume. That is the test the
  * column-major slip above would have failed.
  */
-export function mvpFor({ azimuth, elevation, distance, aspect, exaggeration, side }) {
+export function mvpFor({ azimuth, elevation, distance, aspect, exaggeration, side, fov = ORBIT_FOV }) {
 	const eye = [
 		distance * Math.cos(elevation) * Math.sin(azimuth),
 		-distance * Math.cos(elevation) * Math.cos(azimuth),
 		distance * Math.sin(elevation),
 	];
 	const view = multiply(
-		perspective(Math.PI / 4, aspect, 0.05, 20),
+		perspective(fov, aspect, 0.02, 40),
 		lookAt(eye, [0, 0, 0], [0, 0, 1])
 	);
 	// x and y are a unit square standing for `side` metres, while z is still
@@ -230,6 +264,7 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 
 	const camera = { azimuth: -0.6, elevation: 0.72, distance: 1.9 };
 	let exaggeration = 2.5;
+	let transition = 1; // 0 = flat map, 1 = orbit
 	let mapReady = false;
 
 	gl.enable(gl.DEPTH_TEST);
@@ -249,7 +284,8 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 		gl.viewport(0, 0, w, h);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-		const final = mvpFor({ ...camera, aspect: w / h, exaggeration, side });
+		const posed = blendCamera({ ...camera, exaggeration }, transition);
+		const final = mvpFor({ ...posed, aspect: w / h, side });
 
 		gl.useProgram(program);
 		gl.uniformMatrix4fv(loc.mvp, false, final);
@@ -289,6 +325,10 @@ export function createTerrainView(canvas, { altitude, grid, side, resolution = 1
 		},
 		setExaggeration(v) {
 			exaggeration = v;
+		},
+		/*! 0 = the flat map, 1 = the orbit. Driven by the page's animation. */
+		setTransition(t) {
+			transition = Math.max(0, Math.min(1, t));
 		},
 		elevationRange: { lo, hi },
 	};

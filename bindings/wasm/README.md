@@ -140,8 +140,20 @@ cannot disagree. Drag to orbit, scroll to zoom, and the vertical exaggeration
 is adjustable because 750 m of relief over 4 km is subtle at true scale. The
 view degrades to 2D if WebGL is unavailable.
 
-`mvpFor` and `projectPoint` are exported so the camera can be checked without a
-GL context — feed the mesh's corners through and confirm they land in front of
+Switching between the two views is a **camera move, not a swap**. `blendCamera`
+interpolates between the orbit and a flat pose — straight down through a
+near-orthographic lens (a 0.12 rad field of view from far enough back), framed
+so the mesh's unit square exactly fills a square viewport, north up, with the
+vertical exaggeration wound to zero. That pose draws what the plain 2D canvas
+draws, to within 0.03% of a half-width, so the GL canvas can take over while
+still flat and then tilt up: no cross-fade, no second renderer, and no visible
+handover. Going back holds the GL canvas until the camera is flat again.
+
+The flat pose stops a third of a degree short of vertical on purpose — straight
+down puts the view direction on the up vector and `lookAt` divides by zero.
+
+`mvpFor`, `blendCamera` and `projectPoint` are exported so the camera can be
+checked without a GL context — feed the mesh's corners through and confirm they land in front of
 the camera and inside the clip volume. That test exists because the first
 version of `multiply` indexed its matrices row-major while `perspective`,
 `lookAt` and `uniformMatrix4fv` were all column-major. It still returned a
